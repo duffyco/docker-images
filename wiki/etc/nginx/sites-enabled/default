@@ -1,0 +1,51 @@
+server  {
+		listen  80;
+	        server_name  example.com;
+		error_log  /home/example.com/logs/error_log debug;
+                access_log /home/example.com/logs/access.log;
+		client_header_timeout  700;
+		client_body_timeout  700;
+		charset  UTF-8;
+
+		# This location comes from <Files or <FilesMatch. It's not responded to each other completely. Please check.
+		#
+		location  ~ "^\.ht$" {
+			satisfy  all;
+	 		deny  all;
+		}
+
+		allow  all;
+
+		root  /home/example.com/html;
+
+                location / {
+                   index index.html index.php;
+                }
+
+		location  "/home/example.com/html/" {
+			autoindex  on;
+		}
+               
+
+		location  ~ "^/+$" {
+			error_page  403 /error/noindex.html;
+			autoindex  off;
+		}
+
+#                include perfect-forward-secrecy.conf;
+#                include ssl.conf;
+		
+
+  location ~ \.php(?:$|/) {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        include fastcgi_params;
+        fastcgi_read_timeout 700; 
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_pass unix:/tmp/php-fpm.sock;
+    }
+
+
+}
+

@@ -1,0 +1,72 @@
+server {
+       listen         80;
+       server_name    www.example.ca;
+       return         301 https://$server_name$request_uri;
+}
+
+server  {
+		listen  443;
+	        server_name  example.ca;
+		error_log  /home/www/example.ca/logs/error_log debug;
+                access_log /home/www/example.ca/logs/access.log;
+		client_header_timeout  700;
+		client_body_timeout  700;
+		charset  UTF-8;
+
+		# This location comes from <Files or <FilesMatch. It's not responded to each other completely. Please check.
+		#
+		location  ~ "^\.ht$" {
+			satisfy  all;
+	 		deny  all;
+		}
+
+		allow  all;
+
+		root  /home/www/example.ca/html;
+
+                location / {
+                   index index.html index.php;
+                }
+
+		location  "/home/www/www.example.ca/html/" {
+			autoindex  on;
+		}
+               
+
+		location  ~ "^/+$" {
+			error_page  403 /error/noindex.html;
+			autoindex  off;
+		}
+
+                include perfect-forward-secrecy.conf;
+                include ssl.conf;
+		
+		if  ( $ssl_client_verify !~ "^SUCCESS$" ) {
+			set  $rewrite_var_0 1${rewrite_var_0};
+	        }
+
+		if  ( $remote_addr !~ "^192.168.1.*$" ) {
+	 		set  $rewrite_var_0 1${rewrite_var_0};
+		}
+
+		if  ( $request_uri ~ "^" ) {
+			set  $rewrite_var_0 1${rewrite_var_0};
+		}
+
+		if  ( $rewrite_var_0 = 111 ) {
+			return  403;
+		}
+
+  location ~ \.php(?:$|/) {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        include fastcgi_params;
+        fastcgi_read_timeout 700; 
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_pass unix:/var/run/php5-fpm.sock;
+    }
+
+
+}
+

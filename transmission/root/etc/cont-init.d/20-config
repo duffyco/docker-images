@@ -1,0 +1,7 @@
+#!/usr/bin/with-contenv bash
+
+mkdir -p /downloads/{complete,incomplete} /watch
+
+#[[ ! -f /config/settings.json ]] && cp /defaults/settings.json /config/settings.json
+
+chown www-data:users /watch /config/* /downloads /downloads/incomplete /downloads/complete
