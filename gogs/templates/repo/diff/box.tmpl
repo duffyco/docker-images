@@ -4,7 +4,7 @@
 	<div class="diff-detail-box diff-box">
 		<div>
 			<i class="fa fa-retweet"></i>
-			{{.i18n.Tr "repo.diff.stats_desc" .Diff.NumFiles .Diff.TotalAddition .Diff.TotalDeletion | Str2html}}
+			{{.i18n.Tr "repo.diff.stats_desc" .Diff.NumFiles .Diff.TotalAddition .Diff.TotalDeletion | Str2HTML}}
 			<div class="ui right">
 				<a class="ui tiny basic toggle button" href="?style={{if .IsSplitStyle}}unified{{else}}split{{end}}">{{ if .IsSplitStyle }}{{.i18n.Tr "repo.diff.show_unified_view"}}{{else}}{{.i18n.Tr "repo.diff.show_split_view"}}{{end}}</a>
 				<a class="ui tiny basic toggle button" data-target="#diff-files">{{.i18n.Tr "repo.diff.show_diff_stats"}}</a>
@@ -77,7 +77,7 @@
 						</div>
 					{{end}}
 				</h4>
-				<div class="ui attached table segment">
+				<div class="ui unstackable attached table segment">
 					{{if not $file.IsRenamed}}
 						{{$isImage := (call $.IsImageFile $file.Name)}}
 						{{if and $isImage}}
@@ -99,14 +99,12 @@
 																<pre><code class="{{if $highlightClass}}language-{{$highlightClass}}{{else}}nohighlight{{end}}">{{$section.ComputedInlineDiffFor $line}}</code></pre>
 															</td>
 														{{else}}
-															<td class="lines-num lines-num-old">
-																<span rel="{{if $line.LeftIdx}}diff-{{Sha1 $file.Name}}L{{$line.LeftIdx}}{{end}}">{{if $line.LeftIdx}}{{$line.LeftIdx}}{{end}}</span>
+															<td class="lines-num lines-num-old" {{if $line.LeftIdx}} id="diff-{{Sha1 $file.Index}}L{{$line.LeftIdx}}" data-line-number="{{$line.LeftIdx}}"{{end}}>
 															</td>
 															<td class="lines-code halfwidth">
 																<pre><code class="wrap {{if $highlightClass}}language-{{$highlightClass}}{{else}}nohighlight{{end}}">{{if $line.LeftIdx}}{{$section.ComputedInlineDiffFor $line}}{{end}}</code></pre>
 															</td>
-															<td class="lines-num lines-num-new">
-																<span rel="{{if $line.RightIdx}}diff-{{Sha1 $file.Name}}R{{$line.RightIdx}}{{end}}">{{if $line.RightIdx}}{{$line.RightIdx}}{{end}}</span>
+															<td class="lines-num lines-num-new" {{if $line.RightIdx}} id="diff-{{Sha1 $file.Index}}R{{$line.RightIdx}}" data-line-number="{{$line.RightIdx}}"{{end}}>
 															</td>
 															<td class="lines-code halfwidth">
 																<pre><code class="wrap {{if $highlightClass}}language-{{$highlightClass}}{{else}}nohighlight{{end}}">{{if $line.RightIdx}}{{$section.ComputedInlineDiffFor $line}}{{end}}</code></pre>

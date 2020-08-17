@@ -1,4 +1,4 @@
-FROM alpine-nginx-php
+FROM registry.duffyco.ca:5000/alpine-nginx-php:20200331
 
 ADD etc/nginx /etc/nginx
 #COPY run.sh /usr/local/bin/run.sh

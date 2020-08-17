@@ -26,15 +26,14 @@ const (
 
 // Basic LDAP authentication service
 type Source struct {
-	Name              string // canonical name (ie. corporate.ad)
 	Host              string // LDAP host
 	Port              int    // port number
 	SecurityProtocol  SecurityProtocol
 	SkipVerify        bool
-	BindDN            string // DN to bind with
-	BindPassword      string // Bind DN password
-	UserBase          string // Base search path for users
-	UserDN            string // Template for the DN of the user for simple auth
+	BindDN            string `ini:"bind_dn,omitempty"` // DN to bind with
+	BindPassword      string `ini:",omitempty"`        // Bind DN password
+	UserBase          string `ini:",omitempty"`        // Base search path for users
+	UserDN            string `ini:"user_dn,omitempty"` // Template for the DN of the user for simple auth
 	AttributeUsername string // Username attribute
 	AttributeName     string // First name attribute
 	AttributeSurname  string // Surname attribute
@@ -43,11 +42,10 @@ type Source struct {
 	Filter            string // Query filter to validate entry
 	AdminFilter       string // Query filter to check if user is admin
 	GroupEnabled      bool   // if the group checking is enabled
-	GroupDN           string // Group Search Base
+	GroupDN           string `ini:"group_dn"` // Group Search Base
 	GroupFilter       string // Group Name Filter
-	GroupMemberUID    string // Group Attribute containing array of UserUID
-	UserUID           string // User Attribute listed in Group
-	Enabled           bool   // if this source is disabled
+	GroupMemberUID    string `ini:"group_member_uid"` // Group Attribute containing array of UserUID
+	UserUID           string `ini:"user_uid"`         // User Attribute listed in Group
 }
 
 func (ls *Source) sanitizedUserQuery(username string) (string, bool) {
@@ -58,7 +56,7 @@ func (ls *Source) sanitizedUserQuery(username string) (string, bool) {
 		return "", false
 	}
 
-	return fmt.Sprintf(ls.Filter, username), true
+	return strings.Replace(ls.Filter, "%s", username, -1), true
 }
 
 func (ls *Source) sanitizedUserDN(username string) (string, bool) {
@@ -69,7 +67,7 @@ func (ls *Source) sanitizedUserDN(username string) (string, bool) {
 		return "", false
 	}
 
-	return fmt.Sprintf(ls.UserDN, username), true
+	return strings.Replace(ls.UserDN, "%s", username, -1), true
 }
 
 func (ls *Source) sanitizedGroupFilter(group string) (string, bool) {
@@ -96,13 +94,15 @@ func (ls *Source) sanitizedGroupDN(groupDn string) (string, bool) {
 
 func (ls *Source) findUserDN(l *ldap.Conn, name string) (string, bool) {
 	log.Trace("Search for LDAP user: %s", name)
-	if ls.BindDN != "" && ls.BindPassword != "" {
-		err := l.Bind(ls.BindDN, ls.BindPassword)
+	if len(ls.BindDN) > 0 && len(ls.BindPassword) > 0 {
+		// Replace placeholders with username
+		bindDN := strings.Replace(ls.BindDN, "%s", name, -1)
+		err := l.Bind(bindDN, ls.BindPassword)
 		if err != nil {
-			log.Trace("LDAP: Failed to bind as BindDN '%s': %v", ls.BindDN, err)
+			log.Trace("LDAP: Failed to bind as BindDN '%s': %v", bindDN, err)
 			return "", false
 		}
-		log.Trace("LDAP: Bound as BindDN: %s", ls.BindDN)
+		log.Trace("LDAP: Bound as BindDN: %s", bindDN)
 	} else {
 		log.Trace("LDAP: Proceeding with anonymous LDAP search")
 	}
@@ -178,13 +178,12 @@ func bindUser(l *ldap.Conn, userDN, passwd string) error {
 func (ls *Source) SearchEntry(name, passwd string, directBind bool) (string, string, string, string, bool, bool) {
 	// See https://tools.ietf.org/search/rfc4513#section-5.1.2
 	if len(passwd) == 0 {
-		log.Trace("authentication failed for '%s' with empty password")
+		log.Trace("authentication failed for '%s' with empty password", name)
 		return "", "", "", "", false, false
 	}
 	l, err := dial(ls)
 	if err != nil {
 		log.Error(2, "LDAP connect failed for '%s': %v", ls.Host, err)
-		ls.Enabled = false
 		return "", "", "", "", false, false
 	}
 	defer l.Close()
@@ -269,16 +268,26 @@ func (ls *Source) SearchEntry(name, passwd string, directBind bool) (string, str
 		if err != nil {
 			log.Error(2, "LDAP: Group search failed: %v", err)
 			return "", "", "", "", false, false
-		} else if len(sr.Entries) < 1 {
+		} else if len(srg.Entries) < 1 {
 			log.Error(2, "LDAP: Group search failed: 0 entries")
 			return "", "", "", "", false, false
 		}
 
 		isMember := false
-		for _, group := range srg.Entries {
-			for _, member := range group.GetAttributeValues(ls.GroupMemberUID) {
-				if member == uid {
-					isMember = true
+		if ls.UserUID == "dn" {
+			for _, group := range srg.Entries {
+				for _, member := range group.GetAttributeValues(ls.GroupMemberUID) {
+					if member == sr.Entries[0].DN {
+						isMember = true
+					}
+				}
+			}
+		} else {
+			for _, group := range srg.Entries {
+				for _, member := range group.GetAttributeValues(ls.GroupMemberUID) {
+					if member == uid {
+						isMember = true
+					}
 				}
 			}
 		}

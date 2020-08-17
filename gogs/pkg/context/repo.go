@@ -12,11 +12,11 @@ import (
 	"gopkg.in/editorconfig/editorconfig-core-go.v1"
 	"gopkg.in/macaron.v1"
 
-	"github.com/gogits/git-module"
+	"github.com/gogs/git-module"
 
-	"github.com/gogits/gogs/models"
-	"github.com/gogits/gogs/models/errors"
-	"github.com/gogits/gogs/pkg/setting"
+	"github.com/gogs/gogs/models"
+	"github.com/gogs/gogs/models/errors"
+	"github.com/gogs/gogs/pkg/setting"
 )
 
 type PullRequest struct {
@@ -160,9 +160,9 @@ func RepoAssignment(pages ...bool) macaron.Handler {
 		if c.IsLogged && c.User.IsAdmin {
 			c.Repo.AccessMode = models.ACCESS_MODE_OWNER
 		} else {
-			mode, err := models.AccessLevel(c.UserID(), repo)
+			mode, err := models.UserAccessMode(c.UserID(), repo)
 			if err != nil {
-				c.ServerError("AccessLevel", err)
+				c.ServerError("UserAccessMode", err)
 				return
 			}
 			c.Repo.AccessMode = mode

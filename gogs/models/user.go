@@ -26,14 +26,17 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 	log "gopkg.in/clog.v1"
 
-	"github.com/gogits/git-module"
-	api "github.com/gogits/go-gogs-client"
+	"github.com/gogs/git-module"
+	api "github.com/gogs/go-gogs-client"
 
-	"github.com/gogits/gogs/models/errors"
-	"github.com/gogits/gogs/pkg/avatar"
-	"github.com/gogits/gogs/pkg/setting"
-	"github.com/gogits/gogs/pkg/tool"
+	"github.com/gogs/gogs/models/errors"
+	"github.com/gogs/gogs/pkg/avatar"
+	"github.com/gogs/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/tool"
 )
+
+// USER_AVATAR_URL_PREFIX is used to identify a URL is to access user avatar.
+const USER_AVATAR_URL_PREFIX = "avatars"
 
 type UserType int
 
@@ -55,17 +58,17 @@ type User struct {
 	LoginSource int64 `xorm:"NOT NULL DEFAULT 0"`
 	LoginName   string
 	Type        UserType
-	OwnedOrgs   []*User       `xorm:"-"`
-	Orgs        []*User       `xorm:"-"`
-	Repos       []*Repository `xorm:"-"`
+	OwnedOrgs   []*User       `xorm:"-" json:"-"`
+	Orgs        []*User       `xorm:"-" json:"-"`
+	Repos       []*Repository `xorm:"-" json:"-"`
 	Location    string
 	Website     string
 	Rands       string `xorm:"VARCHAR(10)"`
 	Salt        string `xorm:"VARCHAR(10)"`
 
-	Created     time.Time `xorm:"-"`
+	Created     time.Time `xorm:"-" json:"-"`
 	CreatedUnix int64
-	Updated     time.Time `xorm:"-"`
+	Updated     time.Time `xorm:"-" json:"-"`
 	UpdatedUnix int64
 
 	// Remember visibility choice for convenience, true for private
@@ -95,8 +98,8 @@ type User struct {
 	Description string
 	NumTeams    int
 	NumMembers  int
-	Teams       []*Team `xorm:"-"`
-	Members     []*User `xorm:"-"`
+	Teams       []*Team `xorm:"-" json:"-"`
+	Members     []*User `xorm:"-" json:"-"`
 }
 
 func (u *User) BeforeInsert() {
@@ -120,10 +123,16 @@ func (u *User) AfterSet(colName string, _ xorm.Cell) {
 	}
 }
 
+// IDStr returns string representation of user's ID.
+func (u *User) IDStr() string {
+	return com.ToStr(u.ID)
+}
+
 func (u *User) APIFormat() *api.User {
 	return &api.User{
 		ID:        u.ID,
 		UserName:  u.Name,
+		Login:     u.Name,
 		FullName:  u.FullName,
 		Email:     u.Email,
 		AvatarUrl: u.AvatarLink(),
@@ -137,7 +146,7 @@ func (u *User) IsLocal() bool {
 
 // HasForkedRepo checks if user has already forked a repository with given ID.
 func (u *User) HasForkedRepo(repoID int64) bool {
-	_, has := HasForkedRepo(u.ID, repoID)
+	_, has, _ := HasForkedRepo(u.ID, repoID)
 	return has
 }
 
@@ -252,7 +261,7 @@ func (u *User) RelAvatarLink() string {
 		if !com.IsExist(u.CustomAvatarPath()) {
 			return defaultImgUrl
 		}
-		return setting.AppSubURL + "/avatars/" + com.ToStr(u.ID)
+		return fmt.Sprintf("%s/%s/%d", setting.AppSubURL, USER_AVATAR_URL_PREFIX, u.ID)
 	case setting.DisableGravatar, setting.OfflineMode:
 		if !com.IsExist(u.CustomAvatarPath()) {
 			if err := u.GenerateRandomAvatar(); err != nil {
@@ -260,7 +269,7 @@ func (u *User) RelAvatarLink() string {
 			}
 		}
 
-		return setting.AppSubURL + "/avatars/" + com.ToStr(u.ID)
+		return fmt.Sprintf("%s/%s/%d", setting.AppSubURL, USER_AVATAR_URL_PREFIX, u.ID)
 	}
 	return tool.AvatarLink(u.AvatarEmail)
 }
@@ -325,50 +334,37 @@ func (u *User) ValidatePassword(passwd string) bool {
 }
 
 // UploadAvatar saves custom avatar for user.
-// FIXME: split uploads to different subdirs in case we have massive users.
+// FIXME: split uploads to different subdirs in case we have massive number of users.
 func (u *User) UploadAvatar(data []byte) error {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return fmt.Errorf("Decode: %v", err)
-	}
-
-	m := resize.Resize(avatar.AVATAR_SIZE, avatar.AVATAR_SIZE, img, resize.NearestNeighbor)
-
-	sess := x.NewSession()
-	defer sessionRelease(sess)
-	if err = sess.Begin(); err != nil {
-		return err
-	}
-
-	u.UseCustomAvatar = true
-	if err = updateUser(sess, u); err != nil {
-		return fmt.Errorf("updateUser: %v", err)
+		return fmt.Errorf("decode image: %v", err)
 	}
 
 	os.MkdirAll(setting.AvatarUploadPath, os.ModePerm)
 	fw, err := os.Create(u.CustomAvatarPath())
 	if err != nil {
-		return fmt.Errorf("Create: %v", err)
+		return fmt.Errorf("create custom avatar directory: %v", err)
 	}
 	defer fw.Close()
 
+	m := resize.Resize(avatar.AVATAR_SIZE, avatar.AVATAR_SIZE, img, resize.NearestNeighbor)
 	if err = png.Encode(fw, m); err != nil {
-		return fmt.Errorf("Encode: %v", err)
+		return fmt.Errorf("encode image: %v", err)
 	}
 
-	return sess.Commit()
+	return nil
 }
 
 // DeleteAvatar deletes the user's custom avatar.
 func (u *User) DeleteAvatar() error {
 	log.Trace("DeleteAvatar [%d]: %s", u.ID, u.CustomAvatarPath())
-	os.Remove(u.CustomAvatarPath())
+	if err := os.Remove(u.CustomAvatarPath()); err != nil {
+		return err
+	}
 
 	u.UseCustomAvatar = false
-	if err := UpdateUser(u); err != nil {
-		return fmt.Errorf("UpdateUser: %v", err)
-	}
-	return nil
+	return UpdateUser(u)
 }
 
 // IsAdminOfRepo returns true if user has admin or higher access of repository.
@@ -492,7 +488,7 @@ func GetUserSalt() (string, error) {
 	return tool.RandomString(10)
 }
 
-// NewGhostUser creates and returns a fake user for someone has deleted his/her account.
+// NewGhostUser creates and returns a fake user for someone who has deleted his/her account.
 func NewGhostUser() *User {
 	return &User{
 		ID:        -1,
@@ -502,7 +498,7 @@ func NewGhostUser() *User {
 }
 
 var (
-	reservedUsernames    = []string{"assets", "css", "img", "js", "less", "plugins", "debug", "raw", "install", "api", "avatar", "user", "org", "help", "stars", "issues", "pulls", "commits", "repo", "template", "admin", "new", ".", ".."}
+	reservedUsernames    = []string{"explore", "create", "assets", "css", "img", "js", "less", "plugins", "debug", "raw", "install", "api", "avatar", "user", "org", "help", "stars", "issues", "pulls", "commits", "repo", "template", "admin", "new", ".", ".."}
 	reservedUserPatterns = []string{"*.keys"}
 )
 
@@ -569,7 +565,7 @@ func CreateUser(u *User) (err error) {
 	u.MaxRepoCreation = -1
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -711,7 +707,7 @@ func updateUser(e Engine, u *User) error {
 	u.Website = tool.TruncateString(u.Website, 255)
 	u.Description = tool.TruncateString(u.Description, 255)
 
-	_, err := e.Id(u.ID).AllCols().Update(u)
+	_, err := e.ID(u.ID).AllCols().Update(u)
 	return err
 }
 
@@ -839,7 +835,7 @@ func deleteUser(e *xorm.Session, u *User) error {
 // but issues/comments/pulls will be kept and shown as someone has been deleted.
 func DeleteUser(u *User) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -853,7 +849,7 @@ func DeleteUser(u *User) (err error) {
 		return err
 	}
 
-	return RewriteAllPublicKeys()
+	return RewriteAuthorizedKeys()
 }
 
 // DeleteInactivateUsers deletes all inactivate users and email addresses.
@@ -895,7 +891,7 @@ func GetUserByKeyID(keyID int64) (*User, error) {
 
 func getUserByID(e Engine, id int64) (*User, error) {
 	u := new(User)
-	has, err := e.Id(id).Get(u)
+	has, err := e.ID(id).Get(u)
 	if err != nil {
 		return nil, err
 	} else if !has {
@@ -1104,7 +1100,7 @@ func FollowUser(userID, followID int64) (err error) {
 	}
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -1130,7 +1126,7 @@ func UnfollowUser(userID, followID int64) (err error) {
 	}
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}

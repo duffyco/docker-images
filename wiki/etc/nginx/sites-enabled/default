@@ -1,8 +1,8 @@
 server  {
 		listen  80;
-	        server_name  example.com;
-		error_log  /home/example.com/logs/error_log debug;
-                access_log /home/example.com/logs/access.log;
+	        server_name  wiki.duffyco.ca;
+		error_log  /home/wiki.duffyco.ca/logs/error_log debug;
+                access_log /home/wiki.duffyco.ca/logs/access.log;
 		client_header_timeout  700;
 		client_body_timeout  700;
 		charset  UTF-8;
@@ -16,13 +16,13 @@ server  {
 
 		allow  all;
 
-		root  /home/example.com/html;
+		root  /home/wiki.duffyco.ca/html;
 
                 location / {
                    index index.html index.php;
                 }
 
-		location  "/home/example.com/html/" {
+		location  "/home/wiki.duffyco.ca/html/" {
 			autoindex  on;
 		}
                
@@ -33,7 +33,7 @@ server  {
 		}
 
 #                include perfect-forward-secrecy.conf;
-#                include ssl.conf;
+#                include duffyco.ssl.conf;
 		
 
   location ~ \.php(?:$|/) {

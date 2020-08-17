@@ -1,0 +1,11 @@
+alpine-nginx
+alpine-nginx-php
+mariadb
+#nextcloud
+mailserver
+roundcube/apache
+gogs
+transmission
+wiki
+www
+#zoneminder

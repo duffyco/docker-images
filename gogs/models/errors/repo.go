@@ -59,3 +59,29 @@ func IsMirrorNotExist(err error) bool {
 func (err MirrorNotExist) Error() string {
 	return fmt.Sprintf("mirror does not exist [repo_id: %d]", err.RepoID)
 }
+
+type BranchAlreadyExists struct {
+	Name string
+}
+
+func IsBranchAlreadyExists(err error) bool {
+	_, ok := err.(BranchAlreadyExists)
+	return ok
+}
+
+func (err BranchAlreadyExists) Error() string {
+	return fmt.Sprintf("branch already exists [name: %s]", err.Name)
+}
+
+type ErrBranchNotExist struct {
+	Name string
+}
+
+func IsErrBranchNotExist(err error) bool {
+	_, ok := err.(ErrBranchNotExist)
+	return ok
+}
+
+func (err ErrBranchNotExist) Error() string {
+	return fmt.Sprintf("branch does not exist [name: %s]", err.Name)
+}

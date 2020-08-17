@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: gogs
+  name: gogs
+  namespace: infra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gogs
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: gogs
+    spec:
+      containers:
+      - image: registry.duffyco.ca:5000/gogs:latest
+        name: gogs
+        ports:
+        - containerPort: 3000
+        - containerPort: 22
+        resources: {}
+        volumeMounts:
+        - mountPath: /data
+          name: git-data
+      restartPolicy: Always
+      volumes:
+      - name: git-data
+        hostPath:
+           path: /mnt/services/gogs/data
+           type: Directory
+status: {}

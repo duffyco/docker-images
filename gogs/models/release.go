@@ -13,35 +13,35 @@ import (
 	"github.com/go-xorm/xorm"
 	log "gopkg.in/clog.v1"
 
-	"github.com/gogits/git-module"
-	api "github.com/gogits/go-gogs-client"
+	"github.com/gogs/git-module"
+	api "github.com/gogs/go-gogs-client"
 
-	"github.com/gogits/gogs/models/errors"
-	"github.com/gogits/gogs/pkg/process"
+	"github.com/gogs/gogs/models/errors"
+	"github.com/gogs/gogs/pkg/process"
 )
 
 // Release represents a release of repository.
 type Release struct {
 	ID               int64
 	RepoID           int64
-	Repo             *Repository `xorm:"-"`
+	Repo             *Repository `xorm:"-" json:"-"`
 	PublisherID      int64
-	Publisher        *User `xorm:"-"`
+	Publisher        *User `xorm:"-" json:"-"`
 	TagName          string
 	LowerTagName     string
 	Target           string
 	Title            string
 	Sha1             string `xorm:"VARCHAR(40)"`
 	NumCommits       int64
-	NumCommitsBehind int64  `xorm:"-"`
+	NumCommitsBehind int64  `xorm:"-" json:"-"`
 	Note             string `xorm:"TEXT"`
 	IsDraft          bool   `xorm:"NOT NULL DEFAULT false"`
 	IsPrerelease     bool
 
-	Created     time.Time `xorm:"-"`
+	Created     time.Time `xorm:"-" json:"-"`
 	CreatedUnix int64
 
-	Attachments []*Attachment `xorm:"-"`
+	Attachments []*Attachment `xorm:"-" json:"-"`
 }
 
 func (r *Release) BeforeInsert() {
@@ -175,7 +175,7 @@ func NewRelease(gitRepo *git.Repository, r *Release, uuids []string) error {
 	r.LowerTagName = strings.ToLower(r.TagName)
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -289,11 +289,11 @@ func UpdateRelease(doer *User, gitRepo *git.Repository, r *Release, isPublish bo
 	r.PublisherID = doer.ID
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
-	if _, err = sess.Id(r.ID).AllCols().Update(r); err != nil {
+	if _, err = sess.ID(r.ID).AllCols().Update(r); err != nil {
 		return fmt.Errorf("Update: %v", err)
 	}
 

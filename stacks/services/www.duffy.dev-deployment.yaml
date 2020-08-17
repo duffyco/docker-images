@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: ./kompose convert -f docker-stack-services.yml
+    kompose.version: 1.18.0 (06a2e56)
+  creationTimestamp: null
+  labels:
+    app: www.duffy.dev
+  name: wwwduffydev
+  namespace: services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: www.duffy.dev
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: www.duffy.dev
+    spec:
+      containers:
+      - env:
+        - name: VIRTUAL_HOST
+          value: www.duffy.dev
+        image: registry.duffyco.ca:5000/www:latest
+        name: wwwduffydev
+        ports:
+        - containerPort: 443
+        resources: {}
+        volumeMounts:
+        - mountPath: /home
+          name: www-home
+        - mountPath: /etc/nginx/sites-enabled
+          name: www-config
+        - mountPath: /etc/nginx/ssl-conf
+          name: ssl-conf
+        - mountPath: /etc/pki
+          name: www-pki
+      restartPolicy: Always
+      volumes:
+      - name: www-home
+        hostPath:
+           path: /mnt/services/www.duffy.dev/data
+           type: Directory
+      - name: www-config
+        hostPath:
+           path: /mnt/services/www.duffy.dev/sites-enabled
+           type: Directory
+      - name: ssl-conf
+        hostPath:
+           path: /mnt/services/www.duffy.dev/ssl-conf
+           type: Directory
+      - name: www-pki
+        hostPath:
+           path: /mnt/services/pki
+           type: Directory
+
+status: {}

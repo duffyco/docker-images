@@ -10,9 +10,9 @@ import (
 	"github.com/Unknwon/com"
 	log "gopkg.in/clog.v1"
 
-	"github.com/gogits/gogs/pkg/mailer"
-	"github.com/gogits/gogs/pkg/markup"
-	"github.com/gogits/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/mailer"
+	"github.com/gogs/gogs/pkg/markup"
+	"github.com/gogs/gogs/pkg/setting"
 )
 
 func (issue *Issue) MailSubject() string {
@@ -92,7 +92,7 @@ func NewMailerIssue(issue *Issue) mailer.Issue {
 
 // mailIssueCommentToParticipants can be used for both new issue creation and comment.
 // This functions sends two list of emails:
-// 1. Repository watchers and users who are participated in comments.
+// 1. Repository watchers, users who participated in comments and the assignee.
 // 2. Users who are not in 1. but get mentioned in current issue/comment.
 func mailIssueCommentToParticipants(issue *Issue, doer *User, mentions []string) error {
 	if !setting.Service.EnableNotifyMail {
@@ -142,6 +142,12 @@ func mailIssueCommentToParticipants(issue *Issue, doer *User, mentions []string)
 		tos = append(tos, participants[i].Email)
 		names = append(names, participants[i].Name)
 	}
+	if issue.Assignee != nil && issue.Assignee.ID != doer.ID {
+		if !com.IsSliceContainsStr(names, issue.Assignee.Name) {
+			tos = append(tos, issue.Assignee.Email)
+			names = append(names, issue.Assignee.Name)
+		}
+	}
 	mailer.SendIssueCommentMail(NewMailerIssue(issue), NewMailerRepo(issue.Repo), NewMailerUser(doer), tos)
 
 	// Mail mentioned people and exclude watchers.
@@ -155,7 +161,6 @@ func mailIssueCommentToParticipants(issue *Issue, doer *User, mentions []string)
 		tos = append(tos, mentions[i])
 	}
 	mailer.SendIssueMentionMail(NewMailerIssue(issue), NewMailerRepo(issue.Repo), NewMailerUser(doer), GetUserEmailsByNames(tos))
-
 	return nil
 }
 
@@ -168,7 +173,7 @@ func (issue *Issue) MailParticipants() (err error) {
 	}
 
 	if err = mailIssueCommentToParticipants(issue, issue.Poster, mentions); err != nil {
-		log.Error(4, "mailIssueCommentToParticipants: %v", err)
+		log.Error(2, "mailIssueCommentToParticipants: %v", err)
 	}
 
 	return nil

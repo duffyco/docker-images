@@ -18,8 +18,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	log "gopkg.in/clog.v1"
 
-	"github.com/gogits/gogs/models"
-	"github.com/gogits/gogs/pkg/setting"
+	"github.com/gogs/gogs/models"
+	"github.com/gogs/gogs/pkg/setting"
 )
 
 func cleanCommand(cmd string) string {
@@ -166,7 +166,7 @@ func Listen(host string, port int, ciphers []string) {
 	keyPath := filepath.Join(setting.AppDataPath, "ssh/gogs.rsa")
 	if !com.IsExist(keyPath) {
 		os.MkdirAll(filepath.Dir(keyPath), os.ModePerm)
-		_, stderr, err := com.ExecCmd(setting.SSH.KeygenPath, "-f", keyPath, "-t", "rsa", "-N", "")
+		_, stderr, err := com.ExecCmd(setting.SSH.KeygenPath, "-f", keyPath, "-t", "rsa", "-m", "PEM", "-N", "")
 		if err != nil {
 			panic(fmt.Sprintf("Fail to generate private key: %v - %s", err, stderr))
 		}
@@ -175,11 +175,11 @@ func Listen(host string, port int, ciphers []string) {
 
 	privateBytes, err := ioutil.ReadFile(keyPath)
 	if err != nil {
-		panic("SSH: Fail to load private key")
+		panic("SSH: Fail to load private key: " + err.Error())
 	}
 	private, err := ssh.ParsePrivateKey(privateBytes)
 	if err != nil {
-		panic("SSH: Fail to parse private key")
+		panic("SSH: Fail to parse private key: " + err.Error())
 	}
 	config.AddHostKey(private)
 

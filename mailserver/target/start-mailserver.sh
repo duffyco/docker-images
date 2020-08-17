@@ -177,6 +177,11 @@ function register_functions() {
 
 	if [ "$ENABLE_CLAMAV" = 1 ]; then
 		_register_start_daemon "_start_daemons_clamav"
+        fi
+      
+        # JD: Start SPAMASSASSIN 
+        if [ "$ENABLE_SPAMASSASSIN" = 1 ]; then
+                _register_start_daemon "_start_daemons_spamassassin"       
 	fi
 
 
@@ -744,7 +749,7 @@ function _setup_ssl() {
 	&& [ -e "/tmp/docker-mailserver/ssl/$HOSTNAME/$HOSTNAME-key.pem"  ] \
         && [ -e "/tmp/docker-mailserver/ssl/$HOSTNAME/smtp.pem"  ] \
 	&& [ -e "/tmp/docker-mailserver/ssl/cacert.pem" ]; then
-		notify 'inf' "Adding $HOSTNAME SSL certificate"
+		notify 'inf' "Adding Self-Signed $HOSTNAME SSL certificate"
 		mkdir -p /etc/postfix/ssl
 		cp "/tmp/docker-mailserver/ssl/$HOSTNAME/$HOSTNAME-cert.pem" /etc/postfix/ssl
 		cp "/tmp/docker-mailserver/ssl/$HOSTNAME/$HOSTNAME-key.pem" /etc/postfix/ssl
@@ -766,7 +771,7 @@ function _setup_ssl() {
                 sed -i -e 's~ssl_cert = </etc/dovecot/dovecot\.pem~ssl_cert = </etc/postfix/ssl/'$HOSTNAME'-cert\.pem~g' /etc/dovecot/conf.d/10-ssl.conf
                 sed -i -e 's~ssl_key = </etc/dovecot/private/dovecot\.pem~ssl_key = </etc/postfix/ssl/'$HOSTNAME'-key\.pem~g' /etc/dovecot/conf.d/10-ssl.conf
 
-		notif 'inf' "SSL configured with 'self-signed' certificates"
+		notify 'inf' "SSL configured with 'self-signed' certificates"
 	fi
 	;;
 	esac
@@ -890,7 +895,12 @@ function _setup_security_stack() {
 		SA_TAG=${SA_TAG:="2.0"} && sed -i -r 's/^\$sa_tag_level_deflt (.*);/\$sa_tag_level_deflt = '$SA_TAG';/g' /etc/amavis/conf.d/20-debian_defaults
 		SA_TAG2=${SA_TAG2:="6.31"} && sed -i -r 's/^\$sa_tag2_level_deflt (.*);/\$sa_tag2_level_deflt = '$SA_TAG2';/g' /etc/amavis/conf.d/20-debian_defaults
 		SA_KILL=${SA_KILL:="6.31"} && sed -i -r 's/^\$sa_kill_level_deflt (.*);/\$sa_kill_level_deflt = '$SA_KILL';/g' /etc/amavis/conf.d/20-debian_defaults
+ 
+                #JD: Update Final destiny for SPAMASSASSIN
+                sed -i -r 's/\$final_spam_destiny.*/\$final_spam_destiny = D_PASS;/g' /etc/amavis/conf.d/20-debian_defaults
 		test -e /tmp/docker-mailserver/spamassassin-rules.cf && cp /tmp/docker-mailserver/spamassassin-rules.cf /etc/spamassassin/
+                #JD: Add Spamasassin local.cf copy
+                test -e /tmp/docker-mailserver/spamassassin-local.cf && cp /tmp/docker-mailserver/spamassassin-local.cf /etc/spamassassin/local.cf
 	fi
 
 	# Clamav
@@ -1083,7 +1093,7 @@ function _start_daemons_fail2ban() {
 
 function _start_daemons_opendkim() {
 	notify 'task' 'Starting opendkim' 'n'
-	display_startup_daemon "/etc/init.d/opendkim start"
+	#display_startup_daemon "/etc/init.d/opendkim start"
 }
 
 function _start_daemons_opendmarc() {
@@ -1136,6 +1146,13 @@ function _start_daemons_fetchmail() {
 function _start_daemons_clamav() {
 	notify 'task' 'Starting clamav' 'n'
 	display_startup_daemon "/etc/init.d/clamav-daemon start"
+}
+
+
+#JD: Add Spamassassin start hooks
+function _start_daemons_spamassassin() {
+       notify 'task' 'Starting spamassassin' 'n'
+       display_startup_daemon "/etc/init.d/spamassassin start"
 }
 
 function _start_daemons_postgrey() {

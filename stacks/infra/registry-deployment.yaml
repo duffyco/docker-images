@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: registry
+  name: registry
+  namespace: infra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: registry
+    spec:
+      containers:
+      - env:
+        - name: REGISTRY_HTTP_TLS_CERTIFICATE
+          value: /certs/bundle.crt
+        - name: REGISTRY_HTTP_TLS_KEY
+          value: /certs/registry.duffyco.ca.key
+        - name: REGISTRY_STORAGE_DELETE_ENABLED
+          value: "true"
+        - name: REGISTRY_STORAGE_REDIRECT_DISABLE
+          value: "true"
+        image: silverwind/armhf-registry:latest
+        name: registry
+        ports:
+        - containerPort: 5000
+        resources: {}
+        volumeMounts:
+        - mountPath: /data
+          name: registry-data
+        - mountPath: /certs
+          name: registry-certs
+      restartPolicy: Always
+      volumes:
+      - name: registry-data
+        hostPath:
+           path: /mnt/services/images
+           type: Directory
+      - name: registry-certs
+        hostPath:
+           path: /mnt/services/pki/duffyco.ca/registry
+           type: Directory
+status: {}

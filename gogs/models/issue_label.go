@@ -13,9 +13,9 @@ import (
 
 	"github.com/go-xorm/xorm"
 
-	api "github.com/gogits/go-gogs-client"
+	api "github.com/gogs/go-gogs-client"
 
-	"github.com/gogits/gogs/pkg/tool"
+	"github.com/gogs/gogs/pkg/tool"
 )
 
 var labelColorPattern = regexp.MustCompile("#([a-fA-F0-9]{6})")
@@ -60,8 +60,8 @@ type Label struct {
 	Color           string `xorm:"VARCHAR(7)"`
 	NumIssues       int
 	NumClosedIssues int
-	NumOpenIssues   int  `xorm:"-"`
-	IsChecked       bool `xorm:"-"`
+	NumOpenIssues   int  `xorm:"-" json:"-"`
+	IsChecked       bool `xorm:"-" json:"-"`
 }
 
 func (label *Label) APIFormat() *api.Label {
@@ -196,7 +196,7 @@ func GetLabelsByIssueID(issueID int64) ([]*Label, error) {
 }
 
 func updateLabel(e Engine, l *Label) error {
-	_, err := e.Id(l.ID).AllCols().Update(l)
+	_, err := e.ID(l.ID).AllCols().Update(l)
 	return err
 }
 
@@ -216,12 +216,12 @@ func DeleteLabel(repoID, labelID int64) error {
 	}
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
 
-	if _, err = sess.Id(labelID).Delete(new(Label)); err != nil {
+	if _, err = sess.ID(labelID).Delete(new(Label)); err != nil {
 		return err
 	} else if _, err = sess.Where("label_id = ?", labelID).Delete(new(IssueLabel)); err != nil {
 		return err
@@ -282,7 +282,7 @@ func NewIssueLabel(issue *Issue, label *Label) (err error) {
 	}
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -311,7 +311,7 @@ func newIssueLabels(e *xorm.Session, issue *Issue, labels []*Label) (err error) 
 // NewIssueLabels creates a list of issue-label relations.
 func NewIssueLabels(issue *Issue, labels []*Label) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -361,7 +361,7 @@ func deleteIssueLabel(e *xorm.Session, issue *Issue, label *Label) (err error) {
 // DeleteIssueLabel deletes issue-label relation.
 func DeleteIssueLabel(issue *Issue, label *Label) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}

@@ -91,7 +91,7 @@
 		.label.color {
 			border-radius: 3px;
 			margin-left: 15px;
-			padding: 0 8px;
+			padding: 0 10px;
 		}
 		.octicon {
 			float: left;
@@ -128,11 +128,13 @@
 	#clone-panel {
 		margin-top: -8px;
 		margin-left: 5px;
-		width: 350px;
+		width: auto;
 
 		input {
 			border-radius: 0;
 			padding: 5px 10px;
+			max-width: 190px;
+			width: 190px;
 		}
 
 		.clone.button {
@@ -254,6 +256,9 @@
 
 		#file-content {
 			.header {
+				.octicon {
+					padding-right: 5px;
+				}
 				.icon {
 					font-size: 1em;
 					margin-top: -2px;
@@ -419,13 +424,18 @@
 
 				table {
 					width: 100%;
+					tbody {
+						tr {
+							padding: 0 !important;
+						}
+					}
 				}
 				.lines-num {
 					vertical-align: top;
 					text-align: right;
 					color: #999;
 					background: #f5f5f5;
-					width: 1%;
+					width: 42px;
 
 					span {
 						line-height: 20px;
@@ -436,7 +446,8 @@
 				}
 				.lines-num,
 				.lines-code {
-					padding: 0;
+					display: table-cell !important;
+					padding: 0 !important;
 					pre,
 					ol,
 					.hljs {
@@ -629,6 +640,9 @@
 				.avatar {
 					margin-left: 10px;
 					margin-top: 10px;
+				}
+				#commit_description {
+					height: auto;
 				}
 			}
 		}
@@ -1055,6 +1069,11 @@
 			.lines-num {
 				border-right: 1px solid #d4d4d5;
 				padding: 0 5px;
+				user-select: none;
+
+				&::before {
+					content: attr(data-line-number);
+				}
 
 				&.lines-num-old, &.lines-num-new {
 					cursor: pointer;
@@ -1138,6 +1157,11 @@
 		overflow: auto;
 		overflow-x: auto;
 		overflow-y: hidden;
+
+		table {
+			width: 100%;
+			border-spacing: 0;
+		}
 	}
 
 	&.quickstart {
@@ -1396,6 +1420,10 @@
 				.menu .item {
 					padding: 10px !important;
 				}
+			}
+
+			.logo.item img {
+				margin-top: -4px;
 			}
 		}
 

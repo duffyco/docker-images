@@ -1,0 +1,28 @@
+version: '2'
+services:
+  mail:
+    image: registry.duffyco.ca:5000/mailserver:20200331
+    hostname: mail.duffyco.ca
+    domainname: duffyco.ca
+    container_name: mail
+    ports:
+    - "25:25"
+    - "143:143"
+    - "587:587"
+    - "993:993"
+    volumes:
+    - /mnt/email:/var/mail
+    - /mnt/services/pki/duffyco.ca:/tmp/pki/
+    - /mnt/services/mailserver/config/:/tmp/docker-mailserver/
+    environment:
+    - DMS_DEBUG=1
+    - ENABLE_CLAMAV=1
+    - ENABLE_FAIL2BAN=1
+    - ENABLE_SPAMASSASSIN=1
+    - ONE_DIR=1
+    - OVERRIDE_HOSTNAME=mail.duffyco.ca
+    - SA_TAG=2.0
+    - SSL_TYPE=self-signed
+    cap_add:
+    - NET_ADMIN
+    restart: always

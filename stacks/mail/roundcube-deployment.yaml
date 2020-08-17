@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: roundcube
+  name: roundcube
+  namespace: mail
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: roundcube
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: roundcube
+    spec:
+      containers:
+      - env:
+        - name: VIRTUAL_HOST
+          value: roundcube.duffyco.ca
+        image: registry.duffyco.ca:5000/roundcube:latest
+        name: roundcube
+        ports:
+        - containerPort: 80
+        resources: {}
+        volumeMounts:
+        - mountPath: /rc
+          name: roundcube-data
+      restartPolicy: Always
+      volumes:
+      - name: roundcube-data
+        hostPath:
+           path: /mnt/services/roundcube
+           type: Directory
+
+status: {}

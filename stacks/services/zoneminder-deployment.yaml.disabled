@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: zoneminder
+  name: zoneminder
+  namespace: services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zoneminder
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: zoneminder
+    spec:
+      containers:
+      - image: registry.duffyco.ca:5000/zoneminder:latest
+        name: zoneminder
+        ports:
+        - containerPort: 80
+        resources: {}
+        volumeMounts:
+        - mountPath: /config
+          name: zoneminder-config
+        - mountPath: /etc/localtime
+          name: zoneminder-time
+          readOnly: true
+      restartPolicy: Always
+      volumes:
+      - name: zoneminder-config
+        hostPath:
+           path: /mnt/services/zoneminder/config
+           type: Directory
+      - name: zoneminder-time
+        hostPath:
+           path: /etc/localtime
+           type: File
+status: {}

@@ -14,8 +14,8 @@ import (
 	"github.com/Unknwon/com"
 	"golang.org/x/net/html"
 
-	"github.com/gogits/gogs/pkg/setting"
-	"github.com/gogits/gogs/pkg/tool"
+	"github.com/gogs/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/tool"
 )
 
 // IsReadmeFile reports whether name looks like a README file based on its extension.
@@ -45,17 +45,16 @@ var (
 	// e.g. https://try.gogs.io/gogs/gogs/issues/4#issue-685
 	IssueFullPattern = regexp.MustCompile(`(\s|^)https?.*issues/[0-9]+(#+[0-9a-zA-Z-]*)?`)
 	// IssueNumericPattern matches string that references to a numeric issue, e.g. #1287
-	IssueNumericPattern = regexp.MustCompile(`( |^|\()#[0-9]+\b`)
+	IssueNumericPattern = regexp.MustCompile(`( |^|\(|\[)#[0-9]+\b`)
 	// IssueAlphanumericPattern matches string that references to an alphanumeric issue, e.g. ABC-1234
-	IssueAlphanumericPattern = regexp.MustCompile(`( |^|\()[A-Z]{1,10}-[1-9][0-9]*\b`)
+	IssueAlphanumericPattern = regexp.MustCompile(`( |^|\(|\[)[A-Z]{1,10}-[1-9][0-9]*\b`)
 	// CrossReferenceIssueNumericPattern matches string that references a numeric issue in a difference repository
-	// e.g. gogits/gogs#12345
+	// e.g. gogs/gogs#12345
 	CrossReferenceIssueNumericPattern = regexp.MustCompile(`( |^)[0-9a-zA-Z-_\.]+/[0-9a-zA-Z-_\.]+#[0-9]+\b`)
 
 	// Sha1CurrentPattern matches string that represents a commit SHA, e.g. d8a994ef243349f321568f9e36d5c3f444b99cae
-	// FIXME: this pattern matches pure numbers as well, right now we do a hack to check in RenderSha1CurrentPattern
-	// by converting string to a number.
-	Sha1CurrentPattern = regexp.MustCompile(`\b[0-9a-f]{40}\b`)
+	// FIXME: this pattern matches pure numbers as well, right now we do a hack to check in RenderSha1CurrentPattern by converting string to a number.
+	Sha1CurrentPattern = regexp.MustCompile(`\b[0-9a-f]{7,40}\b`)
 )
 
 // FindAllMentions matches mention patterns in given content
@@ -97,8 +96,9 @@ func RenderIssueIndexPattern(rawBytes []byte, urlPrefix string, metas map[string
 
 	ms := pattern.FindAll(rawBytes, -1)
 	for _, m := range ms {
-		if m[0] == ' ' || m[0] == '(' {
-			m = m[1:] // ignore leading space or opening parentheses
+		if m[0] == ' ' || m[0] == '(' || m[0] == '[' {
+			// ignore leading space, opening parentheses, or opening square brackets
+			m = m[1:]
 		}
 		var link string
 		if metas == nil {
@@ -186,6 +186,12 @@ func wrapImgWithLink(urlPrefix string, buf *bytes.Buffer, token html.Token) {
 
 	// Skip in case the "src" is empty
 	if len(src) == 0 {
+		buf.WriteString(token.String())
+		return
+	}
+
+	// Skip in case the "src" is data url
+	if strings.HasPrefix(src, "data:") {
 		buf.WriteString(token.String())
 		return
 	}

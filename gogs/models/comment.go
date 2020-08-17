@@ -13,10 +13,10 @@ import (
 	"github.com/go-xorm/xorm"
 	log "gopkg.in/clog.v1"
 
-	api "github.com/gogits/go-gogs-client"
+	api "github.com/gogs/go-gogs-client"
 
-	"github.com/gogits/gogs/models/errors"
-	"github.com/gogits/gogs/pkg/markup"
+	"github.com/gogs/gogs/models/errors"
+	"github.com/gogs/gogs/pkg/markup"
 )
 
 // CommentType defines whether a comment is just a simple comment, an action (like close) or a reference.
@@ -52,26 +52,26 @@ type Comment struct {
 	ID              int64
 	Type            CommentType
 	PosterID        int64
-	Poster          *User  `xorm:"-"`
+	Poster          *User  `xorm:"-" json:"-"`
 	IssueID         int64  `xorm:"INDEX"`
-	Issue           *Issue `xorm:"-"`
+	Issue           *Issue `xorm:"-" json:"-"`
 	CommitID        int64
 	Line            int64
 	Content         string `xorm:"TEXT"`
-	RenderedContent string `xorm:"-"`
+	RenderedContent string `xorm:"-" json:"-"`
 
-	Created     time.Time `xorm:"-"`
+	Created     time.Time `xorm:"-" json:"-"`
 	CreatedUnix int64
-	Updated     time.Time `xorm:"-"`
+	Updated     time.Time `xorm:"-" json:"-"`
 	UpdatedUnix int64
 
 	// Reference issue in commit message
 	CommitSHA string `xorm:"VARCHAR(40)"`
 
-	Attachments []*Attachment `xorm:"-"`
+	Attachments []*Attachment `xorm:"-" json:"-"`
 
 	// For view issue page.
-	ShowTag CommentTag `xorm:"-"`
+	ShowTag CommentTag `xorm:"-" json:"-"`
 }
 
 func (c *Comment) BeforeInsert() {
@@ -110,6 +110,12 @@ func (c *Comment) loadAttributes(e Engine) (err error) {
 		if err != nil {
 			return fmt.Errorf("getIssueByID [%d]: %v", c.IssueID, err)
 		}
+		if c.Issue.Repo == nil {
+			c.Issue.Repo, err = getRepositoryByID(e, c.Issue.RepoID)
+			if err != nil {
+				return fmt.Errorf("getRepositoryByID [%d]: %v", c.Issue.RepoID, err)
+			}
+		}
 	}
 
 	if c.Attachments == nil {
@@ -124,14 +130,6 @@ func (c *Comment) loadAttributes(e Engine) (err error) {
 
 func (c *Comment) LoadAttributes() error {
 	return c.loadAttributes(x)
-}
-
-func (c *Comment) AfterDelete() {
-	_, err := DeleteAttachmentsByComment(c.ID, true)
-
-	if err != nil {
-		log.Info("Could not delete files for comment %d on issue #%d: %s", c.ID, c.IssueID, err)
-	}
 }
 
 func (c *Comment) HTMLURL() string {
@@ -182,7 +180,7 @@ func (cmt *Comment) mailParticipants(e Engine, opType ActionType, issue *Issue) 
 		issue.Content = fmt.Sprintf("Reopened #%d", issue.Index)
 	}
 	if err = mailIssueCommentToParticipants(issue, cmt.Poster, mentions); err != nil {
-		log.Error(4, "mailIssueCommentToParticipants: %v", err)
+		log.Error(2, "mailIssueCommentToParticipants: %v", err)
 	}
 
 	return nil
@@ -284,10 +282,10 @@ func createComment(e *xorm.Session, opts *CreateCommentOptions) (_ *Comment, err
 	// Notify watchers for whatever action comes in, ignore if no action type.
 	if act.OpType > 0 {
 		if err = notifyWatchers(e, act); err != nil {
-			log.Error(4, "notifyWatchers: %v", err)
+			log.Error(2, "notifyWatchers: %v", err)
 		}
 		if err = comment.mailParticipants(e, act.OpType, opts.Issue); err != nil {
-			log.Error(4, "MailParticipants: %v", err)
+			log.Error(2, "MailParticipants: %v", err)
 		}
 	}
 
@@ -323,7 +321,7 @@ type CreateCommentOptions struct {
 // CreateComment creates comment of issue or commit.
 func CreateComment(opts *CreateCommentOptions) (comment *Comment, err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return nil, err
 	}
@@ -431,9 +429,9 @@ func getCommentsByIssueIDSince(e Engine, issueID, since int64) ([]*Comment, erro
 
 func getCommentsByRepoIDSince(e Engine, repoID, since int64) ([]*Comment, error) {
 	comments := make([]*Comment, 0, 10)
-	sess := e.Where("issue.repo_id = ?", repoID).Join("INNER", "issue", "issue.id = comment.issue_id", repoID).Asc("created_unix")
+	sess := e.Where("issue.repo_id = ?", repoID).Join("INNER", "issue", "issue.id = comment.issue_id").Asc("comment.created_unix")
 	if since > 0 {
-		sess.And("updated_unix >= ?", since)
+		sess.And("comment.updated_unix >= ?", since)
 	}
 	if err := sess.Find(&comments); err != nil {
 		return nil, err
@@ -497,12 +495,12 @@ func DeleteCommentByID(doer *User, id int64) error {
 	}
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
 
-	if _, err = sess.Id(comment.ID).Delete(new(Comment)); err != nil {
+	if _, err = sess.ID(comment.ID).Delete(new(Comment)); err != nil {
 		return err
 	}
 
@@ -513,7 +511,12 @@ func DeleteCommentByID(doer *User, id int64) error {
 	}
 
 	if err = sess.Commit(); err != nil {
-		return fmt.Errorf("Commit: %v", err)
+		return fmt.Errorf("commit: %v", err)
+	}
+
+	_, err = DeleteAttachmentsByComment(comment.ID, true)
+	if err != nil {
+		log.Error(2, "Failed to delete attachments by comment[%d]: %v", comment.ID, err)
 	}
 
 	if err = comment.Issue.LoadAttributes(); err != nil {

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  name: mail
+  namespace: mail
+spec:
+  type: LoadBalancer
+  ports:
+    - name: imaps 
+      protocol: TCP 
+      port: 993
+    - name: imap
+      protocol: TCP
+      port: 143
+    - name: smtps
+      protocol: TCP
+      port: 587
+    - name: smtp
+      protocol: TCP
+      port: 25
+  selector:
+    app: mail

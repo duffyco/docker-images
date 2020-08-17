@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: ../services/kompose convert -f ../docker-stack-owncloud.yml
+    kompose.version: 1.18.0 (06a2e56)
+  creationTimestamp: null
+  labels:
+    app: nextcloud
+  name: nextcloud
+  namespace: nextcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nextcloud
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: nextcloud
+    spec:
+      containers:
+      - env:
+        - name: GID
+          value: "1000"
+        - name: MYSQL_PASSWORD
+          value: FSenhbE38dG6A3Rr
+        - name: MYSQL_ROOT_PASSWORD
+          value: xWV59V2WLuFwrRKD
+        - name: UID
+          value: "1000"
+        image: registry.duffyco.ca:5000/nextcloud:latest
+        name: nextcloud
+        ports:
+        - containerPort: 8888
+        resources: {}
+        volumeMounts:
+        - mountPath: /data
+          name: nextcloud-data
+        - mountPath: /config
+          name: nextcloud-config
+        - mountPath: /apps2
+          name: nextcloud-apps2
+      restartPolicy: Always
+      volumes:
+      - name: nextcloud-data
+        hostPath:
+           path: /mnt/services/nextcloud/data
+           type: Directory
+      - name: nextcloud-config
+        hostPath:
+           path: /mnt/services/nextcloud/config
+           type: Directory
+      - name: nextcloud-apps2
+        hostPath:
+           path: /mnt/services/nextcloud/apps
+           type: Directory
+
+status: {}

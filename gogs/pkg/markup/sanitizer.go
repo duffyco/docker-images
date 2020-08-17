@@ -10,7 +10,7 @@ import (
 
 	"github.com/microcosm-cc/bluemonday"
 
-	"github.com/gogits/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/setting"
 )
 
 // Sanitizer is a protection wrapper of *bluemonday.Policy which does not allow
@@ -35,6 +35,9 @@ func NewSanitizer() {
 		// Checkboxes
 		sanitizer.policy.AllowAttrs("type").Matching(regexp.MustCompile(`^checkbox$`)).OnElements("input")
 		sanitizer.policy.AllowAttrs("checked", "disabled").OnElements("input")
+
+		// Data URLs
+		sanitizer.policy.AllowURLSchemes("data")
 
 		// Custom URL-Schemes
 		sanitizer.policy.AllowURLSchemes(setting.Markdown.CustomURLSchemes...)

@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: transmission
+  name: transmission
+  namespace: services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: transmission
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: transmission
+    spec:
+      containers:
+      - env:
+        - name: VIRTUAL_HOST
+          value: transmission.duffyco.ca
+        image: registry.duffyco.ca:5000/transmission:latest
+        name: transmission
+        ports:
+        - containerPort: 5050
+        - containerPort: 9091
+        - containerPort: 51413
+        resources: {}
+        volumeMounts:
+        - mountPath: /config
+          name: transmission-config
+        - mountPath: /watch
+          name: transmission-watch
+        - mountPath: /downloads
+          name: transmission-downloads
+      restartPolicy: Always
+      volumes:
+      - name: transmission-config
+        hostPath:
+           path: /mnt/services/transmission/config
+           type: Directory
+      - name: transmission-watch
+        hostPath:
+           path: /mnt/NOTprotected/Videos
+           type: Directory
+      - name: transmission-downloads
+        hostPath:
+           path: /mnt/NOTprotected/Videos
+           type: Directory
+
+status: {}

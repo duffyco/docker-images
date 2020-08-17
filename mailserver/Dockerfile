@@ -1,4 +1,5 @@
-FROM armv7/armhf-ubuntu:14.04
+#FROM armv7/armhf-ubuntu:14.04
+FROM arm32v7/debian:stretch-slim
 MAINTAINER Thomas VIAL
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -45,12 +46,12 @@ RUN apt-get update -q --fix-missing && \
     sasl2-bin \
     spamassassin \
     postgrey \
-    unzip \
-    && \
-  apt-get update -q --fix-missing && apt-get -y upgrade fail2ban && \
+    unzip 
+
+RUN apt-get update -q --fix-missing && apt-get -y upgrade fail2ban && \
   apt-get autoclean && rm -rf /var/lib/apt/lists/* && \
   rm -rf /usr/share/locale/* && rm -rf /usr/share/man/* && rm -rf /usr/share/doc/* && \
-  touch /var/log/auth.log && update-locale
+  touch /var/log/auth.log 
 
 # Configures Postfix
 RUN echo "" > /etc/aliases
@@ -69,6 +70,9 @@ RUN ls -al /opt/filebeat
 #  mkdir /opt/filebeat && \
 #  mv ~/filebeat-linux-arm /opt/filebeat && \
 RUN  chmod +x /opt/filebeat/filebeat-linux-arm
+
+# JD: Fix for Ca-certificates else freshclam won't connect
+RUN apt-get update && apt-get install -y ca-certificates
 
 # Enables Clamav
 RUN (echo "0 0,6,12,18 * * * /usr/bin/freshclam --quiet" ; crontab -l) | crontab -
@@ -135,30 +139,33 @@ RUN sed -i 's/START_DAEMON=no/START_DAEMON=yes/g' /etc/default/fetchmail
 #RUN openssl dhparam -out /etc/postfix/dhparams.pem 2048
 
 # Configuring Logs
+RUN adduser --system syslog
 RUN sed -i -r "/^#?compress/c\compress\ncopytruncate" /etc/logrotate.conf && \
-  mkdir -p /var/log/mail && chown syslog:root /var/log/mail && \
-  touch /var/log/mail/clamav.log && chown -R clamav:root /var/log/mail/clamav.log && \
-  touch /var/log/mail/freshclam.log &&  chown -R clamav:root /var/log/mail/freshclam.log && \
-  sed -i -r 's|/var/log/mail|/var/log/mail/mail|g' /etc/rsyslog.d/50-default.conf && \
-  sed -i -r 's|;auth,authpriv.none|;mail.none;mail.error;auth,authpriv.none|g' /etc/rsyslog.d/50-default.conf && \
+  mkdir -p /var/log/mail && \
+  chown syslog:root /var/log/mail && \
+  touch /var/log/mail/clamav.log && \
+  chown -R clamav:root /var/log/mail/clamav.log && \
+  touch /var/log/mail/freshclam.log && \
+  chown -R clamav:root /var/log/mail/freshclam.log && \
+  sed -i -r 's|/var/log/mail|/var/log/mail/mail|g' /etc/rsyslog.conf && \
+  sed -i -r 's|;auth,authpriv.none|;mail.none;mail.error;auth,authpriv.none|g' /etc/rsyslog.conf && \
   sed -i -r 's|LogFile /var/log/clamav/|LogFile /var/log/mail/|g' /etc/clamav/clamd.conf && \
   sed -i -r 's|UpdateLogFile /var/log/clamav/|UpdateLogFile /var/log/mail/|g' /etc/clamav/freshclam.conf && \
   sed -i -r 's|/var/log/clamav|/var/log/mail|g' /etc/logrotate.d/clamav-daemon && \
   sed -i -r 's|/var/log/clamav|/var/log/mail|g' /etc/logrotate.d/clamav-freshclam && \
-  sed -i -r 's|/var/log/mail|/var/log/mail/mail|g' /etc/logrotate.d/rsyslog
+  sed -i -r 's|/var/log/mail|/var/log/mail/mail|g' /etc/logrotate.d/rsyslog && \
+  sed -i -r '/\/var\/log\/mail\/mail.log/d' /etc/logrotate.d/rsyslog && \
+  # prevent syslog logrotate warnings \
+  sed -i -e 's/\(printerror "could not determine current runlevel"\)/#\1/' /usr/sbin/invoke-rc.d && \
+  sed -i -e 's/^\(POLICYHELPER=\).*/\1/' /usr/sbin/invoke-rc.d && \
+  # prevent email when /sbin/init or init system is not existing \
+  sed -i -e 's/invoke-rc.d rsyslog rotate > \/dev\/null/invoke-rc.d rsyslog --quiet rotate > \/dev\/null/g' /etc/logrotate.d/rsyslog
+
 
 # Get LetsEncrypt signed certificate
-RUN curl -s https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem > /etc/ssl/certs/lets-encrypt-x3-cross-signed.pem
+RUN curl -k https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem > /etc/ssl/certs/lets-encrypt-x3-cross-signed.pem
 
 COPY ./target/bin /usr/local/bin
-# Start-mailserver script
-COPY ./target/start-mailserver.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/*
-
-EXPOSE 25 587 143 993 110 995 4190
-
-CMD /usr/local/bin/start-mailserver.sh
-
 # Run filebeat
 
 ADD ./target/filebeat.yml.tmpl /etc/filebeat/filebeat.yml.tmpl
@@ -179,4 +186,18 @@ RUN apt-get upgrade -y
 
 RUN chown -R root:amavis /etc/spamassassin
 
-RUN start filebeat
+RUN apt-get -y install iproute2 spamc
+RUN adduser spamd --gecos "" --disabled-login
+
+
+COPY ./target/spamassassin/local.cf /etc/spamassassin/local.cf
+COPY ./target/spamassassin/spamassassin /etc/default/spamassassin 
+
+# Start-mailserver script
+COPY ./target/start-mailserver.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/*
+
+EXPOSE 25 587 143 993 110 995 4190
+
+CMD /usr/local/bin/start-mailserver.sh
+

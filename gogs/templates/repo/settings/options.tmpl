@@ -6,11 +6,11 @@
 			{{template "repo/settings/navbar" .}}
 			<div class="twelve wide column content">
 				{{template "base/alert" .}}
-				<h4 class="ui top attached header">
+				<div class="ui top attached header">
 					{{.i18n.Tr "repo.settings.basic_settings"}}
-				</h4>
+				</div>
 				<div class="ui attached segment">
-					<form class="ui form" action="{{.Link}}" method="post">
+					<form class="ui form" action="{{.Link}}" method="POST">
 						{{.CSRFTokenHTML}}
 						<input type="hidden" name="action" value="update">
 						<div class="required field {{if .Err_RepoName}}error{{end}}">
@@ -19,7 +19,9 @@
 						</div>
 						<div class="field {{if .Err_Description}}error{{end}}">
 							<label for="description">{{$.i18n.Tr "repo.repo_desc"}}</label>
-							<textarea id="description" name="description" rows="2">{{.Repository.Description}}</textarea>
+							<textarea class="autosize" id="description" name="description" rows="3">{{.Repository.Description}}</textarea>
+							<p class="help">{{.i18n.Tr "repo.settings.description_desc"}}</p>
+							<p class="help">{{.i18n.Tr "repo.settings.description_length"}}: <span id="descLength"></span></p>
 						</div>
 						<div class="field {{if .Err_Website}}error{{end}}">
 							<label for="website">{{.i18n.Tr "repo.settings.site"}}</label>
@@ -40,14 +42,28 @@
 							<button class="ui green button">{{$.i18n.Tr "repo.settings.update_settings"}}</button>
 						</div>
 					</form>
+
+					<div class="ui divider"></div>
+
+					<form class="ui form" action="{{.Link}}/avatar" method="post" enctype="multipart/form-data">
+						{{.CSRFTokenHTML}}
+						<div class="inline field">
+							<label for="avatar">{{.i18n.Tr "settings.choose_new_avatar"}}</label>
+							<input name="avatar" type="file" >
+						</div>
+						<div class="field">
+							<button class="ui green button">{{$.i18n.Tr "settings.update_avatar"}}</button>
+							<a class="ui red button delete-post" data-request-url="{{.Link}}/avatar/delete" data-done-url="{{.Link}}">{{$.i18n.Tr "settings.delete_current_avatar"}}</a>
+						</div>
+					</form>
 				</div>
 
 				{{if .Repository.IsMirror}}
-					<h4 class="ui top attached header">
+					<div class="ui top attached header">
 						{{.i18n.Tr "repo.settings.mirror_settings"}}
-					</h4>
+					</div>
 					<div class="ui attached segment">
-						<form class="ui form" method="post">
+						<form class="ui form" method="POST">
 							{{.CSRFTokenHTML}}
 							<input type="hidden" name="action" value="mirror">
 							<div class="inline field {{if .Err_EnablePrune}}error{{end}}">
@@ -74,12 +90,12 @@
 
 						<div class="ui divider"></div>
 
-						<form class="ui form" method="post">
+						<form class="ui form" method="POST">
 							{{.CSRFTokenHTML}}
 							<input type="hidden" name="action" value="mirror-sync">
 							<div class="inline field">
 								<label>{{.i18n.Tr "repo.mirror_last_synced"}}</label>
-								<span>{{.Mirror.Updated}}</span>
+								<span>{{.Mirror.LastSync}}</span>
 							</div>
 							<div class="field">
 								<button class="ui blue button">{{$.i18n.Tr "repo.settings.sync_mirror"}}</button>
@@ -88,11 +104,11 @@
 					</div>
 				{{end}}
 
-				<h4 class="ui top attached header">
+				<div class="ui top attached header">
 					{{.i18n.Tr "repo.settings.advanced_settings"}}
-				</h4>
+				</div>
 				<div class="ui attached segment">
-					<form class="ui form" method="post">
+					<form class="ui form" method="POST">
 						{{.CSRFTokenHTML}}
 						<input type="hidden" name="action" value="advanced">
 
@@ -168,7 +184,7 @@
 								<div class="field">
 									<label for="tracker_url_format">{{.i18n.Tr "repo.settings.tracker_url_format"}}</label>
 									<input id="tracker_url_format" name="tracker_url_format" type="url" value="{{.Repository.ExternalTrackerFormat}}" placeholder="e.g. https://github.com/{user}/{repo}/issues/{index}">
-									<p class="help">{{.i18n.Tr "repo.settings.tracker_url_format_desc" | Str2html}}</p>
+									<p class="help">{{.i18n.Tr "repo.settings.tracker_url_format_desc" | Str2HTML}}</p>
 								</div>
 								<div class="inline fields">
 									<label for="issue_style">{{.i18n.Tr "repo.settings.tracker_issue_style"}}</label>
@@ -193,13 +209,26 @@
 							<div class="inline field">
 								<label>{{.i18n.Tr "repo.pulls"}}</label>
 								<div class="ui checkbox">
-									<input name="enable_pulls" type="checkbox" {{if .Repository.EnablePulls}}checked{{end}}>
+									<input class="enable-system" name="enable_pulls" type="checkbox" data-target="#pull_box" {{if .Repository.EnablePulls}}checked{{end}}>
 									<label>{{.i18n.Tr "repo.settings.pulls_desc"}}</label>
+								</div>
+							</div>
+							<div class="ui segment {{if not .Repository.EnablePulls}}disabled{{end}}" id="pull_box">
+								<div class="field">
+									<div class="ui checkbox">
+										<input name="pulls_ignore_whitespace" type="checkbox" {{if .Repository.PullsIgnoreWhitespace}}checked{{end}}>
+										<label>{{.i18n.Tr "repo.settings.pulls.ignore_whitespace"}}</label>
+									</div>
+								</div>
+								<div class="field">
+									<div class="ui checkbox">
+										<input name="pulls_allow_rebase" type="checkbox" {{if .Repository.PullsAllowRebase}}checked{{end}}>
+										<label>{{.i18n.Tr "repo.settings.pulls.allow_rebase_merge"}}</label>
+									</div>
 								</div>
 							</div>
 						{{end}}
 
-						<div class="ui divider"></div>
 						<div class="field">
 							<button class="ui green button">{{$.i18n.Tr "repo.settings.update_settings"}}</button>
 						</div>
@@ -207,9 +236,9 @@
 				</div>
 
 				{{if .IsRepositoryOwner}}
-				<h4 class="ui top attached warning header">
+				<div class="ui top attached warning header">
 					{{.i18n.Tr "repo.settings.danger_zone"}}
-				</h4>
+				</div>
 				<div class="ui attached warning table danger segment">
 					{{if .Repository.IsMirror}}
 					<div class="item">
@@ -276,7 +305,7 @@
 			<div class="ui warning message text left">
 				{{.i18n.Tr "repo.settings.convert_notices_1" | Safe}}
 			</div>
-			<form class="ui form" action="{{.Link}}" method="post">
+			<form class="ui form" action="{{.Link}}" method="POST">
 				{{.CSRFTokenHTML}}
 				<input type="hidden" name="action" value="convert">
 				<div class="field">
@@ -308,7 +337,7 @@
 				{{.i18n.Tr "repo.settings.transfer_notices_1" | Safe}} <br>
 				{{.i18n.Tr "repo.settings.transfer_notices_2" | Safe}}
 			</div>
-			<form class="ui form" action="{{.Link}}" method="post">
+			<form class="ui form" action="{{.Link}}" method="POST">
 				{{.CSRFTokenHTML}}
 				<input type="hidden" name="action" value="transfer">
 				<div class="field">
@@ -346,7 +375,7 @@
 				{{.i18n.Tr "repo.settings.delete_notices_fork_1" | Safe}}
 				{{end}}
 			</div>
-			<form class="ui form" action="{{.Link}}" method="post">
+			<form class="ui form" action="{{.Link}}" method="POST">
 				{{.CSRFTokenHTML}}
 				<input type="hidden" name="action" value="delete">
 				<div class="field">
@@ -378,7 +407,7 @@
 				{{.i18n.Tr "repo.settings.delete_notices_1" | Safe}}<br>
 				{{.i18n.Tr "repo.settings.wiki_delete_notices_1" .Repository.Name | Safe}}
 			</div>
-			<form class="ui form" action="{{.Link}}" method="post">
+			<form class="ui form" action="{{.Link}}" method="POST">
 				{{.CSRFTokenHTML}}
 				<input type="hidden" name="action" value="delete-wiki">
 				<div class="field">

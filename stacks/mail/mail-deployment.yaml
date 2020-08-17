@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: mail
+  name: mail
+  namespace: mail
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mail
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: mail
+    spec:
+      containers:
+      - env:
+        - name: DMS_DEBUG
+          value: "1"
+        - name: ENABLE_CLAMAV
+          value: "0"
+        - name: ENABLE_FAIL2BAN
+          value: "1"
+        - name: ENABLE_SPAMASSASSIN
+          value: "1"
+        - name: ONE_DIR
+          value: "1"
+        - name: OVERRIDE_HOSTNAME
+          value: mail.duffyco.ca
+        - name: SA_TAG
+          value: '"2.0"'
+        - name: SSL_TYPE
+          value: self-signed
+        image: registry.duffyco.ca:5000/mailserver:latest
+        name: mail
+        ports:
+        - containerPort: 25
+        - containerPort: 143
+        - containerPort: 587
+        - containerPort: 993
+        resources: {}
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+        volumeMounts:
+        - mountPath: /var/mail
+          name: emailmount
+        - mountPath: /tmp/docker-mailserver/
+          name: configmount
+        - mountPath: /tmp/pki/
+          name: pkimount
+      hostname: mail
+      restartPolicy: Always
+      volumes:
+      - name: emailmount
+        hostPath:
+           path: /mnt/email
+           type: Directory
+      - name: configmount
+        hostPath: 
+           path: /mnt/services/mailserver/config/ 
+           type: Directory
+      - name: pkimount
+        hostPath:
+           path: /mnt/services/pki/duffyco.ca
+           type: Directory
+status: {}

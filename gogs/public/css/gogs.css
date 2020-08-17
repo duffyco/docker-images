@@ -83,6 +83,7 @@ code.wrap {
 }
 .following.bar .top.menu a.item.brand {
   padding-left: 0;
+  padding-right: 0;
 }
 .following.bar .brand .ui.mini.image {
   width: 30px;
@@ -295,7 +296,7 @@ code.wrap {
   border-top: none;
   line-height: 1em;
   color: rgba(0, 0, 0, 0.8);
-  padding: .71428571em 1.14285714em !important;
+  padding: 0.71428571em 1.14285714em !important;
   font-size: 1rem;
   text-transform: none;
   font-weight: 400;
@@ -346,8 +347,14 @@ footer .ui.language .menu {
 .hide {
   display: none;
 }
+.display.inline {
+  display: inline;
+}
 .center {
   text-align: center;
+}
+.no-padding-left {
+  padding-left: 0 !important;
 }
 .img-1 {
   width: 2px !important;
@@ -441,6 +448,14 @@ footer .ui.language .menu {
 .hljs {
   background: inherit !important;
   padding: 0 !important;
+}
+.ui.dropdown .menu > .item > .image,
+.ui.dropdown .menu > .item > img,
+.ui.dropdown > .text > .image,
+.ui.dropdown > .text > img {
+  vertical-align: middle;
+  margin-top: 0;
+  margin-bottom: 0;
 }
 .markdown:not(code) {
   overflow: hidden;
@@ -929,8 +944,8 @@ footer .ui.language .menu {
 }
 .form .help {
   color: #999999;
-  padding-top: .6em;
-  padding-bottom: .6em;
+  padding-top: 0.6em;
+  padding-bottom: 0.6em;
   display: inline-block;
   word-break: break-word;
 }
@@ -1199,7 +1214,7 @@ footer .ui.language .menu {
 .repository .filter.menu .label.color {
   border-radius: 3px;
   margin-left: 15px;
-  padding: 0 8px;
+  padding: 0 10px;
 }
 .repository .filter.menu .octicon {
   float: left;
@@ -1231,18 +1246,20 @@ footer .ui.language .menu {
 .repository #clone-panel {
   margin-top: -8px;
   margin-left: 5px;
-  width: 350px;
+  width: auto;
 }
 .repository #clone-panel input {
   border-radius: 0;
   padding: 5px 10px;
+  max-width: 190px;
+  width: 190px;
 }
 .repository #clone-panel .clone.button {
   font-size: 13px;
   padding: 0 5px;
 }
 .repository #clone-panel .clone.button:first-child {
-  border-radius: .28571429rem 0 0 .28571429rem;
+  border-radius: 0.28571429rem 0 0 0.28571429rem;
 }
 .repository #clone-panel .icon.button {
   padding: 0 10px;
@@ -1337,6 +1354,9 @@ footer .ui.language .menu {
 .repository.file.list #repo-files-table tr:hover {
   background-color: #ffffEE;
 }
+.repository.file.list #file-content .header .octicon {
+  padding-right: 5px;
+}
 .repository.file.list #file-content .header .icon {
   font-size: 1em;
   margin-top: -2px;
@@ -1410,7 +1430,7 @@ footer .ui.language .menu {
   background-color: #f5f2f0;
   font-family: Consolas, Monaco, 'Andale Mono', monospace;
   padding: 1em;
-  margin: .5em 0;
+  margin: 0.5em 0;
 }
 .repository.file.list #file-content #ipython-notebook .nb-input:before,
 .repository.file.list #file-content #ipython-notebook .nb-output:before {
@@ -1480,12 +1500,15 @@ footer .ui.language .menu {
 .repository.file.list #file-content .code-view table {
   width: 100%;
 }
+.repository.file.list #file-content .code-view table tbody tr {
+  padding: 0 !important;
+}
 .repository.file.list #file-content .code-view .lines-num {
   vertical-align: top;
   text-align: right;
   color: #999;
   background: #f5f5f5;
-  width: 1%;
+  width: 42px;
 }
 .repository.file.list #file-content .code-view .lines-num span {
   line-height: 20px;
@@ -1495,7 +1518,8 @@ footer .ui.language .menu {
 }
 .repository.file.list #file-content .code-view .lines-num,
 .repository.file.list #file-content .code-view .lines-code {
-  padding: 0;
+  display: table-cell !important;
+  padding: 0 !important;
 }
 .repository.file.list #file-content .code-view .lines-num pre,
 .repository.file.list #file-content .code-view .lines-code pre,
@@ -1711,6 +1735,9 @@ footer .ui.language .menu {
 .repository.view.issue .pull .merge.box .avatar {
   margin-left: 10px;
   margin-top: 10px;
+}
+.repository.view.issue .pull .merge.box #commit_description {
+  height: auto;
 }
 .repository.view.issue .comment-list:before {
   display: block;
@@ -2138,6 +2165,10 @@ footer .ui.language .menu {
 .repository .diff-file-box .code-diff .lines-num {
   border-right: 1px solid #d4d4d5;
   padding: 0 5px;
+  user-select: none;
+}
+.repository .diff-file-box .code-diff .lines-num::before {
+  content: attr(data-line-number);
 }
 .repository .diff-file-box .code-diff .lines-num.lines-num-old,
 .repository .diff-file-box .code-diff .lines-num.lines-num-new {
@@ -2149,7 +2180,7 @@ footer .ui.language .menu {
 }
 .repository .diff-file-box .code-diff tbody tr.tag-code td {
   background-color: #F0F0F0 !important;
-  border-color: #D2CECE!important;
+  border-color: #D2CECE !important;
   padding-top: 4px;
   padding-bottom: 4px;
 }
@@ -2202,6 +2233,10 @@ footer .ui.language .menu {
   overflow-x: auto;
   overflow-y: hidden;
 }
+.repository .code-view table {
+  width: 100%;
+  border-spacing: 0;
+}
 .repository.quickstart .guide .item {
   padding: 1em;
 }
@@ -2209,7 +2244,7 @@ footer .ui.language .menu {
   font-weight: normal;
 }
 .repository.quickstart .guide .clone.button:first-child {
-  border-radius: .28571429rem 0 0 .28571429rem;
+  border-radius: 0.28571429rem 0 0 0.28571429rem;
 }
 .repository.quickstart .guide .ui.action.small.input {
   width: 100%;
@@ -2394,6 +2429,9 @@ footer .ui.language .menu {
 .repository.settings.webhooks .types .menu .item {
   padding: 10px !important;
 }
+.repository.settings.webhooks .logo.item img {
+  margin-top: -4px;
+}
 .repository.settings.webhook .text.desc {
   margin-top: 5px;
 }
@@ -2487,10 +2525,10 @@ footer .ui.language .menu {
 }
 .issue.list > .item .desc a.milestone {
   padding-left: 5px;
-  color: #999!important;
+  color: #999 !important;
 }
 .issue.list > .item .desc a.milestone:hover {
-  color: #000!important;
+  color: #000 !important;
 }
 .issue.list > .item .desc .assignee {
   margin-top: -5px;
@@ -2901,6 +2939,9 @@ footer .ui.language .menu {
   margin-top: 5px;
   margin-right: 8px;
 }
+.user.profile .ui.card .profile-avatar {
+  height: 287px;
+}
 .user.profile .ui.card .header {
   word-break: break-all;
 }
@@ -3001,6 +3042,7 @@ footer .ui.language .menu {
 }
 .feeds .news p {
   line-height: 1em;
+  overflow-wrap: break-word;
 }
 .feeds .news .time-since {
   font-size: 13px;
@@ -3012,7 +3054,7 @@ footer .ui.language .menu {
 .feeds .news .push.news .content ul {
   font-size: 13px;
   list-style: none;
-  padding-left: 10px;
+  padding-left: 0;
 }
 .feeds .news .push.news .content ul img {
   margin-bottom: -2px;
@@ -3125,6 +3167,9 @@ footer .ui.language .menu {
 .admin.config pre {
   background-color: #f7f7f7;
   padding: 5px;
+}
+.admin.config code {
+  color: #db2828;
 }
 .admin.config .log-config table tbody tr td:first-child {
   width: 100px;

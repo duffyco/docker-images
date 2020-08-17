@@ -1,14 +1,14 @@
 server {
        listen         80;
-       server_name    www.example.ca;
+       server_name    www.duffyco.ca;
        return         301 https://$server_name$request_uri;
 }
 
 server  {
 		listen  443;
-	        server_name  example.ca;
-		error_log  /home/www/example.ca/logs/error_log debug;
-                access_log /home/www/example.ca/logs/access.log;
+	        server_name  wiki.duffyco.ca;
+		error_log  /home/www/wiki.duffyco.ca/logs/error_log debug;
+                access_log /home/www/wiki.duffyco.ca/logs/access.log;
 		client_header_timeout  700;
 		client_body_timeout  700;
 		charset  UTF-8;
@@ -22,13 +22,13 @@ server  {
 
 		allow  all;
 
-		root  /home/www/example.ca/html;
+		root  /home/www/wiki.duffyco.ca/html;
 
                 location / {
                    index index.html index.php;
                 }
 
-		location  "/home/www/www.example.ca/html/" {
+		location  "/home/www/www.duffyco.ca/html/" {
 			autoindex  on;
 		}
                
@@ -39,7 +39,7 @@ server  {
 		}
 
                 include perfect-forward-secrecy.conf;
-                include ssl.conf;
+                include duffyco.ssl.conf;
 		
 		if  ( $ssl_client_verify !~ "^SUCCESS$" ) {
 			set  $rewrite_var_0 1${rewrite_var_0};

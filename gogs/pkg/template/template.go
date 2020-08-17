@@ -6,7 +6,6 @@ package template
 
 import (
 	"container/list"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"mime"
@@ -15,22 +14,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/json-iterator/go"
 	"github.com/microcosm-cc/bluemonday"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
 	log "gopkg.in/clog.v1"
 	"gopkg.in/editorconfig/editorconfig-core-go.v1"
 
-	"github.com/gogits/gogs/models"
-	"github.com/gogits/gogs/pkg/tool"
-	"github.com/gogits/gogs/pkg/markup"
-	"github.com/gogits/gogs/pkg/setting"
+	"github.com/gogs/gogs/models"
+	"github.com/gogs/gogs/pkg/markup"
+	"github.com/gogs/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/tool"
 )
 
+// TODO: only initialize map once and save to a local variable to reduce copies.
 func NewFuncMap() []template.FuncMap {
 	return []template.FuncMap{map[string]interface{}{
 		"GoVer": func() string {
 			return strings.Title(runtime.Version())
+		},
+		"Year": func() int {
+			return time.Now().Year()
 		},
 		"UseHTTPS": func() bool {
 			return strings.HasPrefix(setting.AppURL, "https")
@@ -59,14 +63,16 @@ func NewFuncMap() []template.FuncMap {
 		"LoadTimes": func(startTime time.Time) string {
 			return fmt.Sprint(time.Since(startTime).Nanoseconds()/1e6) + "ms"
 		},
-		"AvatarLink":   tool.AvatarLink,
-		"Safe":         Safe,
-		"Sanitize":     bluemonday.UGCPolicy().Sanitize,
-		"Str2html":     Str2html,
-		"TimeSince":    tool.TimeSince,
-		"RawTimeSince": tool.RawTimeSince,
-		"FileSize":     tool.FileSize,
-		"Subtract":     tool.Subtract,
+		"AvatarLink":       tool.AvatarLink,
+		"AppendAvatarSize": tool.AppendAvatarSize,
+		"Safe":             Safe,
+		"Sanitize":         bluemonday.UGCPolicy().Sanitize,
+		"Str2HTML":         Str2HTML,
+		"NewLine2br":       NewLine2br,
+		"TimeSince":        tool.TimeSince,
+		"RawTimeSince":     tool.RawTimeSince,
+		"FileSize":         tool.FileSize,
+		"Subtract":         tool.Subtract,
 		"Add": func(a, b int) int {
 			return a + b
 		},
@@ -96,7 +102,7 @@ func NewFuncMap() []template.FuncMap {
 		"DiffTypeToStr":         DiffTypeToStr,
 		"DiffLineTypeToStr":     DiffLineTypeToStr,
 		"Sha1":                  Sha1,
-		"ShortSHA1":              tool.ShortSHA1,
+		"ShortSHA1":             tool.ShortSHA1,
 		"MD5":                   tool.MD5,
 		"ActionContent2Commits": ActionContent2Commits,
 		"EscapePound":           EscapePound,
@@ -124,8 +130,13 @@ func Safe(raw string) template.HTML {
 	return template.HTML(raw)
 }
 
-func Str2html(raw string) template.HTML {
+func Str2HTML(raw string) template.HTML {
 	return template.HTML(markup.Sanitize(raw))
+}
+
+// NewLine2br simply replaces "\n" to "<br>".
+func NewLine2br(raw string) string {
+	return strings.Replace(raw, "\n", "<br>", -1)
 }
 
 func List(l *list.List) chan interface{} {
@@ -168,12 +179,14 @@ func ToUTF8WithErr(content []byte) (error, string) {
 	return err, result
 }
 
+// FIXME: Unused function
 func ToUTF8(content string) string {
 	_, res := ToUTF8WithErr([]byte(content))
 	return res
 }
 
 // Replaces all prefixes 'old' in 's' with 'new'.
+// FIXME: Unused function
 func ReplaceLeft(s, old, new string) string {
 	old_len, new_len, i, n := len(old), len(new), 0, 0
 	for ; i < len(s) && strings.HasPrefix(s[i:], old); n += 1 {
@@ -198,16 +211,16 @@ func ReplaceLeft(s, old, new string) string {
 	return string(replacement)
 }
 
-// RenderCommitMessage renders commit message with XSS-safe and special links.
-func RenderCommitMessage(full bool, msg, urlPrefix string, metas map[string]string) template.HTML {
+// RenderCommitMessage renders commit message with special links.
+func RenderCommitMessage(full bool, msg, urlPrefix string, metas map[string]string) string {
 	cleanMsg := template.HTMLEscapeString(msg)
 	fullMessage := string(markup.RenderIssueIndexPattern([]byte(cleanMsg), urlPrefix, metas))
 	msgLines := strings.Split(strings.TrimSpace(fullMessage), "\n")
 	numLines := len(msgLines)
 	if numLines == 0 {
-		return template.HTML("")
+		return ""
 	} else if !full {
-		return template.HTML(msgLines[0])
+		return msgLines[0]
 	} else if numLines == 1 || (numLines >= 2 && len(msgLines[1]) == 0) {
 		// First line is a header, standalone or followed by empty line
 		header := fmt.Sprintf("<h3>%s</h3>", msgLines[0])
@@ -220,7 +233,7 @@ func RenderCommitMessage(full bool, msg, urlPrefix string, metas map[string]stri
 		// Non-standard git message, there is no header line
 		fullMessage = fmt.Sprintf("<h4>%s</h4>", strings.Join(msgLines, "<br>"))
 	}
-	return template.HTML(fullMessage)
+	return fullMessage
 }
 
 type Actioner interface {
@@ -264,6 +277,8 @@ func ActionIcon(opType int) string {
 		return "alert"
 	case 19: // Fork a repository
 		return "repo-forked"
+	case 20, 21, 22: // Mirror sync
+		return "repo-clone"
 	default:
 		return "invalid type"
 	}
@@ -271,8 +286,8 @@ func ActionIcon(opType int) string {
 
 func ActionContent2Commits(act Actioner) *models.PushCommits {
 	push := models.NewPushCommits()
-	if err := json.Unmarshal([]byte(act.GetContent()), push); err != nil {
-		log.Error(4, "json.Unmarshal:\n%s\nERROR: %v", act.GetContent(), err)
+	if err := jsoniter.Unmarshal([]byte(act.GetContent()), push); err != nil {
+		log.Error(4, "Unmarshal:\n%s\nERROR: %v", act.GetContent(), err)
 	}
 	return push
 }

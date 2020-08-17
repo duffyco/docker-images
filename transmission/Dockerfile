@@ -22,8 +22,10 @@ RUN apk add --no-cache\
     build-base
 
 
-RUN pip install -U pip setuptools \
-    flexget transmissionrpc
+RUN pip install -U pip
+RUN pip install -U setuptools
+RUN pip install -U flexget 
+RUN pip install -U transmissionrpc
 
 RUN apk update
 RUN apk upgrade --available

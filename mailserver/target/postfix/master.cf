@@ -107,3 +107,7 @@ dovecot   unix  -       n       n       -       -       pipe
 
 virtualprocmail unix - n n - - pipe flags=DRXhuq user=vmail:vmail
   argv=/usr/bin/procmail -m -t E_SENDER=$sender E_RECIPIENT=$recipient ER_USER=$user ER_DOMAIN=$domain ER_DETAIL=$extension NEXTHOP=$nexthop /etc/postfix/default.rc
+
+spamassassin unix -     n       n       -       -       pipe
+    user=spamd argv=/usr/bin/spamc -f -e  
+    /usr/sbin/sendmail -oi -f ${sender} ${recipient}

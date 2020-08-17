@@ -73,6 +73,7 @@ pre, code {
 	}
 	.top.menu a.item.brand {
 		padding-left: 0;
+    padding-right: 0;
 	}
 	.brand .ui.mini.image {
 		width: 30px;
@@ -383,8 +384,17 @@ footer {
 .hide {
 	display: none;
 }
+.display {
+	&.inline {
+		display: inline;
+	}
+}
 .center {
 	text-align: center;
+}
+
+.no-padding-left {
+	padding-left: 0 !important;
 }
 
 .generate-img(16);
@@ -427,4 +437,14 @@ footer {
 .hljs {
 	background: inherit !important;
 	padding: 0 !important;
+}
+
+// Reset CSS to prevent UI breaks
+.ui.dropdown .menu>.item>.image,
+.ui.dropdown .menu>.item>img,
+.ui.dropdown>.text>.image,
+.ui.dropdown>.text>img {
+	vertical-align: middle;
+	margin-top: 0;
+    margin-bottom: 0;
 }

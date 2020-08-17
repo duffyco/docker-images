@@ -9,9 +9,10 @@ import (
 	"strings"
 
 	"github.com/Unknwon/com"
-	"github.com/gogits/git-module"
+	"github.com/gogs/git-module"
 
-	"github.com/gogits/gogs/pkg/tool"
+	"github.com/gogs/gogs/models/errors"
+	"github.com/gogs/gogs/pkg/tool"
 )
 
 type Branch struct {
@@ -45,7 +46,7 @@ func GetBranchesByPath(path string) ([]*Branch, error) {
 
 func (repo *Repository) GetBranch(br string) (*Branch, error) {
 	if !git.IsBranchExist(repo.RepoPath(), br) {
-		return nil, ErrBranchNotExist{br}
+		return nil, errors.ErrBranchNotExist{br}
 	}
 	return &Branch{
 		RepoPath: repo.RepoPath(),
@@ -101,7 +102,7 @@ func GetProtectBranchOfRepoByName(repoID int64, name string) (*ProtectBranch, er
 	if err != nil {
 		return nil, err
 	} else if !has {
-		return nil, ErrBranchNotExist{name}
+		return nil, errors.ErrBranchNotExist{name}
 	}
 	return protectBranch, nil
 }
@@ -119,7 +120,7 @@ func IsBranchOfRepoRequirePullRequest(repoID int64, name string) bool {
 // If ID is 0, it creates a new record. Otherwise, updates existing record.
 func UpdateProtectBranch(protectBranch *ProtectBranch) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -130,7 +131,7 @@ func UpdateProtectBranch(protectBranch *ProtectBranch) (err error) {
 		}
 	}
 
-	if _, err = sess.Id(protectBranch.ID).AllCols().Update(protectBranch); err != nil {
+	if _, err = sess.ID(protectBranch.ID).AllCols().Update(protectBranch); err != nil {
 		return fmt.Errorf("Update: %v", err)
 	}
 
@@ -228,12 +229,12 @@ func UpdateOrgProtectBranch(repo *Repository, protectBranch *ProtectBranch, whit
 	}
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
 
-	if _, err = sess.Id(protectBranch.ID).AllCols().Update(protectBranch); err != nil {
+	if _, err = sess.ID(protectBranch.ID).AllCols().Update(protectBranch); err != nil {
 		return fmt.Errorf("Update: %v", err)
 	}
 
@@ -252,5 +253,5 @@ func UpdateOrgProtectBranch(repo *Repository, protectBranch *ProtectBranch, whit
 // GetProtectBranchesByRepoID returns a list of *ProtectBranch in given repostiory.
 func GetProtectBranchesByRepoID(repoID int64) ([]*ProtectBranch, error) {
 	protectBranches := make([]*ProtectBranch, 0, 2)
-	return protectBranches, x.Where("repo_id = ?", repoID).Asc("name").Find(&protectBranches)
+	return protectBranches, x.Where("repo_id = ? and protected = ?", repoID, true).Asc("name").Find(&protectBranches)
 }

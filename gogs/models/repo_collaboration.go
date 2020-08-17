@@ -9,7 +9,7 @@ import (
 
 	log "gopkg.in/clog.v1"
 
-	api "github.com/gogits/go-gogs-client"
+	api "github.com/gogs/go-gogs-client"
 )
 
 // Collaboration represent the relation between an individual and a repository.
@@ -67,7 +67,7 @@ func (repo *Repository) AddCollaborator(u *User) error {
 	collaboration.Mode = ACCESS_MODE_WRITE
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -165,12 +165,12 @@ func (repo *Repository) ChangeCollaborationAccessMode(userID int64, mode AccessM
 	}
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
 
-	if _, err = sess.Id(collaboration.ID).AllCols().Update(collaboration); err != nil {
+	if _, err = sess.ID(collaboration.ID).AllCols().Update(collaboration); err != nil {
 		return fmt.Errorf("update collaboration: %v", err)
 	}
 
@@ -207,7 +207,7 @@ func DeleteCollaboration(repo *Repository, userID int64) (err error) {
 	}
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}

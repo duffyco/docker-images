@@ -25,24 +25,25 @@ import (
 	"github.com/go-macaron/session"
 	"github.com/go-macaron/toolbox"
 	"github.com/mcuadros/go-version"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli"
 	log "gopkg.in/clog.v1"
 	"gopkg.in/macaron.v1"
 
-	"github.com/gogits/gogs/models"
-	"github.com/gogits/gogs/pkg/bindata"
-	"github.com/gogits/gogs/pkg/context"
-	"github.com/gogits/gogs/pkg/form"
-	"github.com/gogits/gogs/pkg/mailer"
-	"github.com/gogits/gogs/pkg/setting"
-	"github.com/gogits/gogs/pkg/template"
-	"github.com/gogits/gogs/routers"
-	"github.com/gogits/gogs/routers/admin"
-	apiv1 "github.com/gogits/gogs/routers/api/v1"
-	"github.com/gogits/gogs/routers/dev"
-	"github.com/gogits/gogs/routers/org"
-	"github.com/gogits/gogs/routers/repo"
-	"github.com/gogits/gogs/routers/user"
+	"github.com/gogs/gogs/models"
+	"github.com/gogs/gogs/pkg/bindata"
+	"github.com/gogs/gogs/pkg/context"
+	"github.com/gogs/gogs/pkg/form"
+	"github.com/gogs/gogs/pkg/mailer"
+	"github.com/gogs/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/template"
+	"github.com/gogs/gogs/routes"
+	"github.com/gogs/gogs/routes/admin"
+	apiv1 "github.com/gogs/gogs/routes/api/v1"
+	"github.com/gogs/gogs/routes/dev"
+	"github.com/gogs/gogs/routes/org"
+	"github.com/gogs/gogs/routes/repo"
+	"github.com/gogs/gogs/routes/user"
 )
 
 var Web = cli.Command{
@@ -64,7 +65,7 @@ func checkVersion() {
 	if err != nil {
 		log.Fatal(2, "Fail to read 'templates/.VERSION': %v", err)
 	}
-	tplVer := string(data)
+	tplVer := strings.TrimSpace(string(data))
 	if tplVer != setting.AppVer {
 		if version.Compare(tplVer, setting.AppVer, ">") {
 			log.Fatal(2, "Binary version is lower than template file version, did you forget to recompile Gogs?")
@@ -96,7 +97,14 @@ func newMacaron() *macaron.Macaron {
 	m.Use(macaron.Static(
 		setting.AvatarUploadPath,
 		macaron.StaticOptions{
-			Prefix:      "avatars",
+			Prefix:      models.USER_AVATAR_URL_PREFIX,
+			SkipLogging: setting.DisableRouterLog,
+		},
+	))
+	m.Use(macaron.Static(
+		setting.RepositoryAvatarUploadPath,
+		macaron.StaticOptions{
+			Prefix:      models.REPO_AVATAR_URL_PREFIX,
 			SkipLogging: setting.DisableRouterLog,
 		},
 	))
@@ -160,7 +168,7 @@ func runWeb(c *cli.Context) error {
 	if c.IsSet("config") {
 		setting.CustomConf = c.String("config")
 	}
-	routers.GlobalInit()
+	routes.GlobalInit()
 	checkVersion()
 
 	m := newMacaron()
@@ -172,20 +180,22 @@ func runWeb(c *cli.Context) error {
 
 	bindIgnErr := binding.BindIgnErr
 
+	m.SetAutoHead(true)
+
 	// FIXME: not all routes need go through same middlewares.
 	// Especially some AJAX requests, we can reduce middleware number to improve performance.
 	// Routers.
-	m.Get("/", ignSignIn, routers.Home)
+	m.Get("/", ignSignIn, routes.Home)
 	m.Group("/explore", func() {
 		m.Get("", func(c *context.Context) {
 			c.Redirect(setting.AppSubURL + "/explore/repos")
 		})
-		m.Get("/repos", routers.ExploreRepos)
-		m.Get("/users", routers.ExploreUsers)
-		m.Get("/organizations", routers.ExploreOrganizations)
+		m.Get("/repos", routes.ExploreRepos)
+		m.Get("/users", routes.ExploreUsers)
+		m.Get("/organizations", routes.ExploreOrganizations)
 	}, ignSignIn)
-	m.Combo("/install", routers.InstallInit).Get(routers.Install).
-		Post(bindIgnErr(form.Install{}), routers.InstallPost)
+	m.Combo("/install", routes.InstallInit).Get(routes.Install).
+		Post(bindIgnErr(form.Install{}), routes.InstallPost)
 	m.Get("/^:type(issues|pulls)$", reqSignIn, user.Issues)
 
 	// ***** START: User *****
@@ -247,15 +257,15 @@ func runWeb(c *cli.Context) error {
 		m.Get("/email2user", user.Email2User)
 		m.Get("/forget_password", user.ForgotPasswd)
 		m.Post("/forget_password", user.ForgotPasswdPost)
-		m.Get("/logout", user.SignOut)
+		m.Post("/logout", user.SignOut)
 	})
 	// ***** END: User *****
 
-	adminReq := context.Toggle(&context.ToggleOptions{SignInRequired: true, AdminRequired: true})
+	reqAdmin := context.Toggle(&context.ToggleOptions{SignInRequired: true, AdminRequired: true})
 
 	// ***** START: Admin *****
 	m.Group("/admin", func() {
-		m.Get("", adminReq, admin.Dashboard)
+		m.Get("", admin.Dashboard)
 		m.Get("/config", admin.Config)
 		m.Post("/config/test_mail", admin.SendTestMail)
 		m.Get("/monitor", admin.Monitor)
@@ -289,7 +299,7 @@ func runWeb(c *cli.Context) error {
 			m.Post("/delete", admin.DeleteNotices)
 			m.Get("/empty", admin.EmptyNotices)
 		})
-	}, adminReq)
+	}, reqAdmin)
 	// ***** END: Admin *****
 
 	m.Group("", func() {
@@ -298,7 +308,7 @@ func runWeb(c *cli.Context) error {
 			m.Get("/followers", user.Followers)
 			m.Get("/following", user.Following)
 			m.Get("/stars", user.Stars)
-		})
+		}, context.InjectParamsUser())
 
 		m.Get("/attachments/:uuid", func(c *context.Context) {
 			attach, err := models.GetAttachmentByUUID(c.Params(":uuid"))
@@ -330,8 +340,8 @@ func runWeb(c *cli.Context) error {
 	}, ignSignIn)
 
 	m.Group("/:username", func() {
-		m.Get("/action/:action", user.Action)
-	}, reqSignIn)
+		m.Post("/action/:action", user.Action)
+	}, reqSignIn, context.InjectParamsUser())
 
 	if macaron.Env == macaron.DEV {
 		m.Get("/template/*", dev.TemplatePreview)
@@ -387,10 +397,12 @@ func runWeb(c *cli.Context) error {
 					m.Post("/gogs/new", bindIgnErr(form.NewWebhook{}), repo.WebHooksNewPost)
 					m.Post("/slack/new", bindIgnErr(form.NewSlackHook{}), repo.SlackHooksNewPost)
 					m.Post("/discord/new", bindIgnErr(form.NewDiscordHook{}), repo.DiscordHooksNewPost)
+					m.Post("/dingtalk/new", bindIgnErr(form.NewDingtalkHook{}), repo.DingtalkHooksNewPost)
 					m.Get("/:id", repo.WebHooksEdit)
 					m.Post("/gogs/:id", bindIgnErr(form.NewWebhook{}), repo.WebHooksEditPost)
 					m.Post("/slack/:id", bindIgnErr(form.NewSlackHook{}), repo.SlackHooksEditPost)
 					m.Post("/discord/:id", bindIgnErr(form.NewDiscordHook{}), repo.DiscordHooksEditPost)
+					m.Post("/dingtalk/:id", bindIgnErr(form.NewDingtalkHook{}), repo.DingtalkHooksEditPost)
 				})
 
 				m.Route("/delete", "GET,POST", org.SettingsDelete)
@@ -415,6 +427,9 @@ func runWeb(c *cli.Context) error {
 		m.Group("/settings", func() {
 			m.Combo("").Get(repo.Settings).
 				Post(bindIgnErr(form.RepoSetting{}), repo.SettingsPost)
+			m.Combo("/avatar").Get(repo.SettingsAvatar).
+				Post(binding.MultipartForm(form.Avatar{}), repo.SettingsAvatarPost)
+			m.Post("/avatar/delete", repo.SettingsDeleteAvatar)
 			m.Group("/collaboration", func() {
 				m.Combo("").Get(repo.SettingsCollaboration).Post(repo.SettingsCollaborationPost)
 				m.Post("/access_mode", repo.ChangeCollaborationAccessMode)
@@ -439,9 +454,11 @@ func runWeb(c *cli.Context) error {
 				m.Post("/gogs/new", bindIgnErr(form.NewWebhook{}), repo.WebHooksNewPost)
 				m.Post("/slack/new", bindIgnErr(form.NewSlackHook{}), repo.SlackHooksNewPost)
 				m.Post("/discord/new", bindIgnErr(form.NewDiscordHook{}), repo.DiscordHooksNewPost)
+				m.Post("/dingtalk/new", bindIgnErr(form.NewDingtalkHook{}), repo.DingtalkHooksNewPost)
 				m.Post("/gogs/:id", bindIgnErr(form.NewWebhook{}), repo.WebHooksEditPost)
 				m.Post("/slack/:id", bindIgnErr(form.NewSlackHook{}), repo.SlackHooksEditPost)
 				m.Post("/discord/:id", bindIgnErr(form.NewDiscordHook{}), repo.DiscordHooksEditPost)
+				m.Post("/dingtalk/:id", bindIgnErr(form.NewDingtalkHook{}), repo.DingtalkHooksEditPost)
 
 				m.Group("/:id", func() {
 					m.Get("", repo.WebHooksEdit)
@@ -467,7 +484,7 @@ func runWeb(c *cli.Context) error {
 		})
 	}, reqSignIn, context.RepoAssignment(), reqRepoAdmin, context.RepoRef())
 
-	m.Get("/:username/:reponame/action/:action", reqSignIn, context.RepoAssignment(), repo.Action)
+	m.Post("/:username/:reponame/action/:action", reqSignIn, context.RepoAssignment(), repo.Action)
 	m.Group("/:username/:reponame", func() {
 		m.Get("/issues", repo.RetrieveLabels, repo.Issues)
 		m.Get("/issues/:index", repo.ViewIssue)
@@ -631,8 +648,10 @@ func runWeb(c *cli.Context) error {
 		// e.g. with or without ".git" suffix.
 		m.Group("/:reponame([\\d\\w-_\\.]+\\.git$)", func() {
 			m.Get("", ignSignIn, context.RepoAssignment(), context.RepoRef(), repo.Home)
+			m.Options("/*", ignSignInAndCsrf, repo.HTTPContexter(), repo.HTTP)
 			m.Route("/*", "GET,POST", ignSignInAndCsrf, repo.HTTPContexter(), repo.HTTP)
 		})
+		m.Options("/:reponame/*", ignSignInAndCsrf, repo.HTTPContexter(), repo.HTTP)
 		m.Route("/:reponame/*", "GET,POST", ignSignInAndCsrf, repo.HTTPContexter(), repo.HTTP)
 	})
 	// ***** END: Repository *****
@@ -640,6 +659,18 @@ func runWeb(c *cli.Context) error {
 	m.Group("/api", func() {
 		apiv1.RegisterRoutes(m)
 	}, ignSignIn)
+
+	m.Group("/-", func() {
+		if setting.Prometheus.Enabled {
+			m.Get("/metrics", func(c *context.Context) {
+				if !setting.Prometheus.EnableBasicAuth {
+					return
+				}
+
+				c.RequireBasicAuth(setting.Prometheus.BasicAuthUsername, setting.Prometheus.BasicAuthPassword)
+			}, promhttp.Handler())
+		}
+	})
 
 	// robots.txt
 	m.Get("/robots.txt", func(c *context.Context) {
@@ -651,7 +682,7 @@ func runWeb(c *cli.Context) error {
 	})
 
 	// Not found handler.
-	m.NotFound(routers.NotFound)
+	m.NotFound(routes.NotFound)
 
 	// Flag for port number in case first time run conflict.
 	if c.IsSet("port") {
@@ -719,7 +750,7 @@ func runWeb(c *cli.Context) error {
 	}
 
 	if err != nil {
-		log.Fatal(4, "Fail to start server: %v", err)
+		log.Fatal(4, "Failed to start server: %v", err)
 	}
 
 	return nil

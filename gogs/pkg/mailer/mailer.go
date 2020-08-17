@@ -18,12 +18,13 @@ import (
 	log "gopkg.in/clog.v1"
 	"gopkg.in/gomail.v2"
 
-	"github.com/gogits/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/setting"
 )
 
 type Message struct {
 	Info string // Message information for log purpose.
 	*gomail.Message
+	confirmChan chan struct{}
 }
 
 // NewMessageFrom creates new mail message object with custom From header.
@@ -33,24 +34,32 @@ func NewMessageFrom(to []string, from, subject, htmlBody string) *Message {
 	msg := gomail.NewMessage()
 	msg.SetHeader("From", from)
 	msg.SetHeader("To", to...)
-	msg.SetHeader("Subject", subject)
+	msg.SetHeader("Subject", setting.MailService.SubjectPrefix+subject)
 	msg.SetDateHeader("Date", time.Now())
 
 	contentType := "text/html"
 	body := htmlBody
-	if setting.MailService.UsePlainText {
+	switchedToPlaintext := false
+	if setting.MailService.UsePlainText || setting.MailService.AddPlainTextAlt {
 		plainBody, err := html2text.FromString(htmlBody)
 		if err != nil {
 			log.Error(2, "html2text.FromString: %v", err)
 		} else {
 			contentType = "text/plain"
 			body = plainBody
+			switchedToPlaintext = true
 		}
 	}
 	msg.SetBody(contentType, body)
-
+	if switchedToPlaintext && setting.MailService.AddPlainTextAlt && !setting.MailService.UsePlainText {
+		// The AddAlternative method name is confusing - adding html as an "alternative" will actually cause mail 
+		// clients to show it as first priority, and the text "main body" is the 2nd priority fallback.
+		// See: https://godoc.org/gopkg.in/gomail.v2#Message.AddAlternative
+		msg.AddAlternative("text/html", htmlBody)
+	}
 	return &Message{
-		Message: msg,
+		Message:     msg,
+		confirmChan: make(chan struct{}),
 	}
 }
 
@@ -204,12 +213,14 @@ func processMailQueue() {
 			} else {
 				log.Trace("E-mails sent %s: %s", msg.GetHeader("To"), msg.Info)
 			}
+			msg.confirmChan <- struct{}{}
 		}
 	}
 }
 
 var mailQueue chan *Message
 
+// NewContext initializes settings for mailer.
 func NewContext() {
 	// Need to check if mailQueue is nil because in during reinstall (user had installed
 	// before but swithed install lock off), this function will be called again
@@ -222,8 +233,18 @@ func NewContext() {
 	go processMailQueue()
 }
 
-func SendAsync(msg *Message) {
+// Send puts new message object into mail queue.
+// It returns without confirmation (mail processed asynchronously) in normal cases,
+// but waits/blocks under hook mode to make sure mail has been sent.
+func Send(msg *Message) {
+	mailQueue <- msg
+
+	if setting.HookMode {
+		<-msg.confirmChan
+		return
+	}
+
 	go func() {
-		mailQueue <- msg
+		<-msg.confirmChan
 	}()
 }

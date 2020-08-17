@@ -6,7 +6,6 @@ package context
 
 import (
 	"fmt"
-	"html/template"
 	"io"
 	"net/http"
 	"path"
@@ -21,11 +20,12 @@ import (
 	log "gopkg.in/clog.v1"
 	"gopkg.in/macaron.v1"
 
-	"github.com/gogits/gogs/models"
-	"github.com/gogits/gogs/models/errors"
-	"github.com/gogits/gogs/pkg/auth"
-	"github.com/gogits/gogs/pkg/form"
-	"github.com/gogits/gogs/pkg/setting"
+	"github.com/gogs/gogs/models"
+	"github.com/gogs/gogs/models/errors"
+	"github.com/gogs/gogs/pkg/auth"
+	"github.com/gogs/gogs/pkg/form"
+	"github.com/gogs/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/template"
 )
 
 // Context represents context of a request.
@@ -40,6 +40,7 @@ type Context struct {
 	User        *models.User
 	IsLogged    bool
 	IsBasicAuth bool
+	IsTokenAuth bool
 
 	Repo *Repository
 	Org  *Organization
@@ -66,6 +67,14 @@ func (c *Context) RequireHighlightJS() {
 
 func (c *Context) RequireSimpleMDE() {
 	c.Require("SimpleMDE")
+}
+
+func (c *Context) RequireAutosize() {
+	c.Require("Autosize")
+}
+
+func (c *Context) RequireDropzone() {
+	c.Require("Dropzone")
 }
 
 // FormErr sets "Err_xxx" field in template data.
@@ -130,10 +139,21 @@ func (c *Context) JSONSuccess(data interface{}) {
 	c.JSON(http.StatusOK, data)
 }
 
+// RawRedirect simply calls underlying Redirect method with no escape.
+func (c *Context) RawRedirect(location string, status ...int) {
+	c.Context.Redirect(location, status...)
+}
+
+// Redirect responses redirection wtih given location and status.
+// It escapes special characters in the location string.
+func (c *Context) Redirect(location string, status ...int) {
+	c.Context.Redirect(template.EscapePound(location), status...)
+}
+
 // SubURLRedirect responses redirection wtih given location and status.
 // It prepends setting.AppSubURL to the location string.
 func (c *Context) SubURLRedirect(location string, status ...int) {
-	c.Redirect(setting.AppSubURL + location)
+	c.Redirect(setting.AppSubURL+location, status...)
 }
 
 // RenderWithErr used for page has form validation but need to prompt error to users.
@@ -219,7 +239,7 @@ func Contexter() macaron.Handler {
 			},
 			Org: &Organization{},
 		}
-		c.Data["Link"] = c.Link
+		c.Data["Link"] = template.EscapePound(c.Link)
 		c.Data["PageStartTime"] = time.Now()
 
 		// Quick responses appropriate go-get meta with status 200
@@ -244,21 +264,26 @@ func Contexter() macaron.Handler {
 			}
 
 			prefix := setting.AppURL + path.Join(ownerName, repoName, "src", branchName)
-			c.PlainText(http.StatusOK, []byte(com.Expand(`
+			insecureFlag := ""
+			if !strings.HasPrefix(setting.AppURL, "https://") {
+				insecureFlag = "--insecure "
+			}
+			c.PlainText(http.StatusOK, []byte(com.Expand(`<!doctype html>
 <html>
 	<head>
 		<meta name="go-import" content="{GoGetImport} git {CloneLink}">
 		<meta name="go-source" content="{GoGetImport} _ {GoDocDirectory} {GoDocFile}">
 	</head>
 	<body>
-		go get {GoGetImport}
+		go get {InsecureFlag}{GoGetImport}
 	</body>
 </html>
 `, map[string]string{
-				"GoGetImport":    path.Join(setting.Domain, setting.AppSubURL, c.Link),
+				"GoGetImport":    path.Join(setting.HostAddress, setting.AppSubURL, repo.FullName()),
 				"CloneLink":      models.ComposeHTTPSCloneURL(ownerName, repoName),
 				"GoDocDirectory": prefix + "{/dir}",
 				"GoDocFile":      prefix + "{/dir}/{file}#L{line}",
+				"InsecureFlag":   insecureFlag,
 			})))
 			return
 		}
@@ -270,8 +295,8 @@ func Contexter() macaron.Handler {
 			c.Header().Set("Access-Control-Allow-Headers", "Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With")
 		}
 
-		// Get user from session if logined.
-		c.User, c.IsBasicAuth = auth.SignedInUser(c.Context, c.Session)
+		// Get user from session or header when possible
+		c.User, c.IsBasicAuth, c.IsTokenAuth = auth.SignedInUser(c.Context, c.Session)
 
 		if c.User != nil {
 			c.IsLogged = true
@@ -288,19 +313,21 @@ func Contexter() macaron.Handler {
 		// If request sends files, parse them here otherwise the Query() can't be parsed and the CsrfToken will be invalid.
 		if c.Req.Method == "POST" && strings.Contains(c.Req.Header.Get("Content-Type"), "multipart/form-data") {
 			if err := c.Req.ParseMultipartForm(setting.AttachmentMaxSize << 20); err != nil && !strings.Contains(err.Error(), "EOF") { // 32MB max size
-				c.Handle(500, "ParseMultipartForm", err)
+				c.ServerError("ParseMultipartForm", err)
 				return
 			}
 		}
 
 		c.Data["CSRFToken"] = x.GetToken()
-		c.Data["CSRFTokenHTML"] = template.HTML(`<input type="hidden" name="_csrf" value="` + x.GetToken() + `">`)
+		c.Data["CSRFTokenHTML"] = template.Safe(`<input type="hidden" name="_csrf" value="` + x.GetToken() + `">`)
 		log.Trace("Session ID: %s", sess.ID())
 		log.Trace("CSRF Token: %v", c.Data["CSRFToken"])
 
 		c.Data["ShowRegistrationButton"] = setting.Service.ShowRegistrationButton
 		c.Data["ShowFooterBranding"] = setting.ShowFooterBranding
 		c.Data["ShowFooterVersion"] = setting.ShowFooterVersion
+
+		c.renderNoticeBanner()
 
 		ctx.Map(c)
 	}

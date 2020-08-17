@@ -13,11 +13,11 @@ import (
 	"github.com/go-xorm/xorm"
 	log "gopkg.in/clog.v1"
 
-	api "github.com/gogits/go-gogs-client"
+	api "github.com/gogs/go-gogs-client"
 
-	"github.com/gogits/gogs/models/errors"
-	"github.com/gogits/gogs/pkg/setting"
-	"github.com/gogits/gogs/pkg/tool"
+	"github.com/gogs/gogs/models/errors"
+	"github.com/gogs/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/tool"
 )
 
 var (
@@ -28,34 +28,34 @@ var (
 type Issue struct {
 	ID              int64
 	RepoID          int64       `xorm:"INDEX UNIQUE(repo_index)"`
-	Repo            *Repository `xorm:"-"`
+	Repo            *Repository `xorm:"-" json:"-"`
 	Index           int64       `xorm:"UNIQUE(repo_index)"` // Index in one repository.
 	PosterID        int64
-	Poster          *User    `xorm:"-"`
+	Poster          *User    `xorm:"-" json:"-"`
 	Title           string   `xorm:"name"`
 	Content         string   `xorm:"TEXT"`
-	RenderedContent string   `xorm:"-"`
-	Labels          []*Label `xorm:"-"`
+	RenderedContent string   `xorm:"-" json:"-"`
+	Labels          []*Label `xorm:"-" json:"-"`
 	MilestoneID     int64
-	Milestone       *Milestone `xorm:"-"`
+	Milestone       *Milestone `xorm:"-" json:"-"`
 	Priority        int
 	AssigneeID      int64
-	Assignee        *User `xorm:"-"`
+	Assignee        *User `xorm:"-" json:"-"`
 	IsClosed        bool
-	IsRead          bool         `xorm:"-"`
+	IsRead          bool         `xorm:"-" json:"-"`
 	IsPull          bool         // Indicates whether is a pull request or not.
-	PullRequest     *PullRequest `xorm:"-"`
+	PullRequest     *PullRequest `xorm:"-" json:"-"`
 	NumComments     int
 
-	Deadline     time.Time `xorm:"-"`
+	Deadline     time.Time `xorm:"-" json:"-"`
 	DeadlineUnix int64
-	Created      time.Time `xorm:"-"`
+	Created      time.Time `xorm:"-" json:"-"`
 	CreatedUnix  int64
-	Updated      time.Time `xorm:"-"`
+	Updated      time.Time `xorm:"-" json:"-"`
 	UpdatedUnix  int64
 
-	Attachments []*Attachment `xorm:"-"`
-	Comments    []*Comment    `xorm:"-"`
+	Attachments []*Attachment `xorm:"-" json:"-"`
+	Comments    []*Comment    `xorm:"-" json:"-"`
 }
 
 func (issue *Issue) BeforeInsert() {
@@ -160,8 +160,8 @@ func (issue *Issue) HTMLURL() string {
 }
 
 // State returns string representation of issue status.
-func (i *Issue) State() api.StateType {
-	if i.IsClosed {
+func (issue *Issue) State() api.StateType {
+	if issue.IsClosed {
 		return api.STATE_CLOSED
 	}
 	return api.STATE_OPEN
@@ -208,22 +208,22 @@ func (issue *Issue) APIFormat() *api.Issue {
 }
 
 // HashTag returns unique hash tag for issue.
-func (i *Issue) HashTag() string {
-	return "issue-" + com.ToStr(i.ID)
+func (issue *Issue) HashTag() string {
+	return "issue-" + com.ToStr(issue.ID)
 }
 
 // IsPoster returns true if given user by ID is the poster.
-func (i *Issue) IsPoster(uid int64) bool {
-	return i.PosterID == uid
+func (issue *Issue) IsPoster(uid int64) bool {
+	return issue.PosterID == uid
 }
 
-func (i *Issue) hasLabel(e Engine, labelID int64) bool {
-	return hasIssueLabel(e, i.ID, labelID)
+func (issue *Issue) hasLabel(e Engine, labelID int64) bool {
+	return hasIssueLabel(e, issue.ID, labelID)
 }
 
 // HasLabel returns true if issue has been labeled by given ID.
-func (i *Issue) HasLabel(labelID int64) bool {
-	return i.hasLabel(x, labelID)
+func (issue *Issue) HasLabel(labelID int64) bool {
+	return issue.hasLabel(x, labelID)
 }
 
 func (issue *Issue) sendLabelUpdatedWebhook(doer *User) {
@@ -255,8 +255,8 @@ func (issue *Issue) sendLabelUpdatedWebhook(doer *User) {
 	}
 }
 
-func (i *Issue) addLabel(e *xorm.Session, label *Label) error {
-	return newIssueLabel(e, i, label)
+func (issue *Issue) addLabel(e *xorm.Session, label *Label) error {
+	return newIssueLabel(e, issue, label)
 }
 
 // AddLabel adds a new label to the issue.
@@ -314,8 +314,13 @@ func (issue *Issue) clearLabels(e *xorm.Session) (err error) {
 		return fmt.Errorf("getLabels: %v", err)
 	}
 
+	// NOTE: issue.removeLabel slices issue.Labels, so we need to create another slice to be unaffected.
+	labels := make([]*Label, len(issue.Labels))
 	for i := range issue.Labels {
-		if err = issue.removeLabel(e, issue.Labels[i]); err != nil {
+		labels[i] = issue.Labels[i]
+	}
+	for i := range labels {
+		if err = issue.removeLabel(e, labels[i]); err != nil {
 			return fmt.Errorf("removeLabel: %v", err)
 		}
 	}
@@ -325,7 +330,7 @@ func (issue *Issue) clearLabels(e *xorm.Session) (err error) {
 
 func (issue *Issue) ClearLabels(doer *User) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -370,7 +375,7 @@ func (issue *Issue) ClearLabels(doer *User) (err error) {
 // ReplaceLabels removes all current labels and add new labels to the issue.
 func (issue *Issue) ReplaceLabels(labels []*Label) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -384,12 +389,12 @@ func (issue *Issue) ReplaceLabels(labels []*Label) (err error) {
 	return sess.Commit()
 }
 
-func (i *Issue) GetAssignee() (err error) {
-	if i.AssigneeID == 0 || i.Assignee != nil {
+func (issue *Issue) GetAssignee() (err error) {
+	if issue.AssigneeID == 0 || issue.Assignee != nil {
 		return nil
 	}
 
-	i.Assignee, err = GetUserByID(i.AssigneeID)
+	issue.Assignee, err = GetUserByID(issue.AssigneeID)
 	if errors.IsUserNotExist(err) {
 		return nil
 	}
@@ -397,12 +402,12 @@ func (i *Issue) GetAssignee() (err error) {
 }
 
 // ReadBy sets issue to be read by given user.
-func (i *Issue) ReadBy(uid int64) error {
-	return UpdateIssueUserByRead(uid, i.ID)
+func (issue *Issue) ReadBy(uid int64) error {
+	return UpdateIssueUserByRead(uid, issue.ID)
 }
 
 func updateIssueCols(e Engine, issue *Issue, cols ...string) error {
-	_, err := e.Id(issue.ID).Cols(cols...).Update(issue)
+	_, err := e.ID(issue.ID).Cols(cols...).Update(issue)
 	return err
 }
 
@@ -411,41 +416,41 @@ func UpdateIssueCols(issue *Issue, cols ...string) error {
 	return updateIssueCols(x, issue, cols...)
 }
 
-func (i *Issue) changeStatus(e *xorm.Session, doer *User, repo *Repository, isClosed bool) (err error) {
+func (issue *Issue) changeStatus(e *xorm.Session, doer *User, repo *Repository, isClosed bool) (err error) {
 	// Nothing should be performed if current status is same as target status
-	if i.IsClosed == isClosed {
+	if issue.IsClosed == isClosed {
 		return nil
 	}
-	i.IsClosed = isClosed
+	issue.IsClosed = isClosed
 
-	if err = updateIssueCols(e, i, "is_closed"); err != nil {
+	if err = updateIssueCols(e, issue, "is_closed"); err != nil {
 		return err
-	} else if err = updateIssueUsersByStatus(e, i.ID, isClosed); err != nil {
+	} else if err = updateIssueUsersByStatus(e, issue.ID, isClosed); err != nil {
 		return err
 	}
 
 	// Update issue count of labels
-	if err = i.getLabels(e); err != nil {
+	if err = issue.getLabels(e); err != nil {
 		return err
 	}
-	for idx := range i.Labels {
-		if i.IsClosed {
-			i.Labels[idx].NumClosedIssues++
+	for idx := range issue.Labels {
+		if issue.IsClosed {
+			issue.Labels[idx].NumClosedIssues++
 		} else {
-			i.Labels[idx].NumClosedIssues--
+			issue.Labels[idx].NumClosedIssues--
 		}
-		if err = updateLabel(e, i.Labels[idx]); err != nil {
+		if err = updateLabel(e, issue.Labels[idx]); err != nil {
 			return err
 		}
 	}
 
 	// Update issue count of milestone
-	if err = changeMilestoneIssueStats(e, i); err != nil {
+	if err = changeMilestoneIssueStats(e, issue); err != nil {
 		return err
 	}
 
 	// New action comment
-	if _, err = createStatusComment(e, doer, repo, i); err != nil {
+	if _, err = createStatusComment(e, doer, repo, issue); err != nil {
 		return err
 	}
 
@@ -455,7 +460,7 @@ func (i *Issue) changeStatus(e *xorm.Session, doer *User, repo *Repository, isCl
 // ChangeStatus changes issue status to open or closed.
 func (issue *Issue) ChangeStatus(doer *User, repo *Repository, isClosed bool) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -744,7 +749,7 @@ func newIssue(e *xorm.Session, opts NewIssueOptions) (err error) {
 // NewIssue creates new issue with labels and attachments for repository.
 func NewIssue(repo *Repository, issue *Issue, labelIDs []int64, uuids []string) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -799,9 +804,9 @@ func GetIssueByRef(ref string) (*Issue, error) {
 		return nil, errors.InvalidIssueReference{ref}
 	}
 
-	index, err := com.StrTo(ref[n+1:]).Int64()
-	if err != nil {
-		return nil, err
+	index := com.StrTo(ref[n+1:]).MustInt64()
+	if index == 0 {
+		return nil, errors.IssueNotExist{}
 	}
 
 	repo, err := GetRepositoryByRef(ref[:n])
@@ -843,7 +848,7 @@ func GetIssueByIndex(repoID, index int64) (*Issue, error) {
 
 func getRawIssueByID(e Engine, id int64) (*Issue, error) {
 	issue := new(Issue)
-	has, err := e.Id(id).Get(issue)
+	has, err := e.ID(id).Get(issue)
 	if err != nil {
 		return nil, err
 	} else if !has {
@@ -1062,7 +1067,7 @@ func newIssueUsers(e *xorm.Session, repo *Repository, issue *Issue) error {
 // NewIssueUsers adds new issue-user relations for new issue of repository.
 func NewIssueUsers(repo *Repository, issue *Issue) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -1354,7 +1359,7 @@ func GetRepoIssueStats(repoID, userID int64, filterMode FilterMode, isPull bool)
 }
 
 func updateIssue(e Engine, issue *Issue) error {
-	_, err := e.Id(issue.ID).AllCols().Update(issue)
+	_, err := e.ID(issue.ID).AllCols().Update(issue)
 	return err
 }
 
@@ -1391,7 +1396,7 @@ func updateIssueUserByAssignee(e *xorm.Session, issue *Issue) (err error) {
 // UpdateIssueUserByAssignee updates issue-user relation for assignee.
 func UpdateIssueUserByAssignee(issue *Issue) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -1423,7 +1428,7 @@ func updateIssueUsersByMentions(e Engine, issueID int64, uids []int64) error {
 
 		iu.IsMentioned = true
 		if has {
-			_, err = e.Id(iu.ID).AllCols().Update(iu)
+			_, err = e.ID(iu.ID).AllCols().Update(iu)
 		} else {
 			_, err = e.Insert(iu)
 		}

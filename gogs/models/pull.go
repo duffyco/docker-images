@@ -15,13 +15,13 @@ import (
 	"github.com/go-xorm/xorm"
 	log "gopkg.in/clog.v1"
 
-	"github.com/gogits/git-module"
-	api "github.com/gogits/go-gogs-client"
+	"github.com/gogs/git-module"
+	api "github.com/gogs/go-gogs-client"
 
-	"github.com/gogits/gogs/models/errors"
-	"github.com/gogits/gogs/pkg/process"
-	"github.com/gogits/gogs/pkg/setting"
-	"github.com/gogits/gogs/pkg/sync"
+	"github.com/gogs/gogs/models/errors"
+	"github.com/gogs/gogs/pkg/process"
+	"github.com/gogs/gogs/pkg/setting"
+	"github.com/gogs/gogs/pkg/sync"
 )
 
 var PullRequestQueue = sync.NewUniqueQueue(setting.Repository.PullRequestQueueLength)
@@ -48,13 +48,13 @@ type PullRequest struct {
 	Status PullRequestStatus
 
 	IssueID int64  `xorm:"INDEX"`
-	Issue   *Issue `xorm:"-"`
+	Issue   *Issue `xorm:"-" json:"-"`
 	Index   int64
 
 	HeadRepoID   int64
-	HeadRepo     *Repository `xorm:"-"`
+	HeadRepo     *Repository `xorm:"-" json:"-"`
 	BaseRepoID   int64
-	BaseRepo     *Repository `xorm:"-"`
+	BaseRepo     *Repository `xorm:"-" json:"-"`
 	HeadUserName string
 	HeadBranch   string
 	BaseBranch   string
@@ -63,8 +63,8 @@ type PullRequest struct {
 	HasMerged      bool
 	MergedCommitID string `xorm:"VARCHAR(40)"`
 	MergerID       int64
-	Merger         *User     `xorm:"-"`
-	Merged         time.Time `xorm:"-"`
+	Merger         *User     `xorm:"-" json:"-"`
+	Merged         time.Time `xorm:"-" json:"-"`
 	MergedUnix     int64
 }
 
@@ -183,16 +183,24 @@ func (pr *PullRequest) CanAutoMerge() bool {
 	return pr.Status == PULL_REQUEST_STATUS_MERGEABLE
 }
 
+// MergeStyle represents the approach to merge commits into base branch.
+type MergeStyle string
+
+const (
+	MERGE_STYLE_REGULAR MergeStyle = "create_merge_commit"
+	MERGE_STYLE_REBASE  MergeStyle = "rebase_before_merging"
+)
+
 // Merge merges pull request to base repository.
 // FIXME: add repoWorkingPull make sure two merges does not happen at same time.
-func (pr *PullRequest) Merge(doer *User, baseGitRepo *git.Repository) (err error) {
+func (pr *PullRequest) Merge(doer *User, baseGitRepo *git.Repository, mergeStyle MergeStyle, commitDescription string) (err error) {
 	defer func() {
 		go HookQueue.Add(pr.BaseRepo.ID)
 		go AddTestPullRequestTask(doer, pr.BaseRepo.ID, pr.BaseBranch, false)
 	}()
 
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -207,54 +215,98 @@ func (pr *PullRequest) Merge(doer *User, baseGitRepo *git.Repository) (err error
 		return fmt.Errorf("OpenRepository: %v", err)
 	}
 
-	// Clone base repo.
+	// Create temporary directory to store temporary copy of the base repository,
+	// and clean it up when operation finished regardless of succeed or not.
 	tmpBasePath := path.Join(setting.AppDataPath, "tmp/repos", com.ToStr(time.Now().Nanosecond())+".git")
 	os.MkdirAll(path.Dir(tmpBasePath), os.ModePerm)
 	defer os.RemoveAll(path.Dir(tmpBasePath))
 
+	// Clone the base repository to the defined temporary directory,
+	// and checks out to base branch directly.
 	var stderr string
 	if _, stderr, err = process.ExecTimeout(5*time.Minute,
 		fmt.Sprintf("PullRequest.Merge (git clone): %s", tmpBasePath),
-		"git", "clone", baseGitRepo.Path, tmpBasePath); err != nil {
+		"git", "clone", "-b", pr.BaseBranch, baseGitRepo.Path, tmpBasePath); err != nil {
 		return fmt.Errorf("git clone: %s", stderr)
 	}
 
-	// Check out base branch.
-	if _, stderr, err = process.ExecDir(-1, tmpBasePath,
-		fmt.Sprintf("PullRequest.Merge (git checkout): %s", tmpBasePath),
-		"git", "checkout", pr.BaseBranch); err != nil {
-		return fmt.Errorf("git checkout: %s", stderr)
-	}
-
-	// Add head repo remote.
+	// Add remote which points to the head repository.
 	if _, stderr, err = process.ExecDir(-1, tmpBasePath,
 		fmt.Sprintf("PullRequest.Merge (git remote add): %s", tmpBasePath),
 		"git", "remote", "add", "head_repo", headRepoPath); err != nil {
 		return fmt.Errorf("git remote add [%s -> %s]: %s", headRepoPath, tmpBasePath, stderr)
 	}
 
-	// Merge commits.
+	// Fetch information from head repository to the temporary copy.
 	if _, stderr, err = process.ExecDir(-1, tmpBasePath,
 		fmt.Sprintf("PullRequest.Merge (git fetch): %s", tmpBasePath),
 		"git", "fetch", "head_repo"); err != nil {
 		return fmt.Errorf("git fetch [%s -> %s]: %s", headRepoPath, tmpBasePath, stderr)
 	}
 
-	if _, stderr, err = process.ExecDir(-1, tmpBasePath,
-		fmt.Sprintf("PullRequest.Merge (git merge --no-ff --no-commit): %s", tmpBasePath),
-		"git", "merge", "--no-ff", "--no-commit", "head_repo/"+pr.HeadBranch); err != nil {
-		return fmt.Errorf("git merge --no-ff --no-commit [%s]: %v - %s", tmpBasePath, err, stderr)
+	remoteHeadBranch := "head_repo/" + pr.HeadBranch
+
+	// Check if merge style is allowed, reset to default style if not
+	if mergeStyle == MERGE_STYLE_REBASE && !pr.BaseRepo.PullsAllowRebase {
+		mergeStyle = MERGE_STYLE_REGULAR
 	}
 
-	sig := doer.NewGitSig()
-	if _, stderr, err = process.ExecDir(-1, tmpBasePath,
-		fmt.Sprintf("PullRequest.Merge (git merge): %s", tmpBasePath),
-		"git", "commit", fmt.Sprintf("--author='%s <%s>'", sig.Name, sig.Email),
-		"-m", fmt.Sprintf("Merge branch '%s' of %s/%s into %s", pr.HeadBranch, pr.HeadUserName, pr.HeadRepo.Name, pr.BaseBranch)); err != nil {
-		return fmt.Errorf("git commit [%s]: %v - %s", tmpBasePath, err, stderr)
+	switch mergeStyle {
+	case MERGE_STYLE_REGULAR: // Create merge commit
+
+		// Merge changes from head branch.
+		if _, stderr, err = process.ExecDir(-1, tmpBasePath,
+			fmt.Sprintf("PullRequest.Merge (git merge --no-ff --no-commit): %s", tmpBasePath),
+			"git", "merge", "--no-ff", "--no-commit", remoteHeadBranch); err != nil {
+			return fmt.Errorf("git merge --no-ff --no-commit [%s]: %v - %s", tmpBasePath, err, stderr)
+		}
+
+		// Create a merge commit for the base branch.
+		sig := doer.NewGitSig()
+		if _, stderr, err = process.ExecDir(-1, tmpBasePath,
+			fmt.Sprintf("PullRequest.Merge (git merge): %s", tmpBasePath),
+			"git", "commit", fmt.Sprintf("--author='%s <%s>'", sig.Name, sig.Email),
+			"-m", fmt.Sprintf("Merge branch '%s' of %s/%s into %s", pr.HeadBranch, pr.HeadUserName, pr.HeadRepo.Name, pr.BaseBranch),
+			"-m", commitDescription); err != nil {
+			return fmt.Errorf("git commit [%s]: %v - %s", tmpBasePath, err, stderr)
+		}
+
+	case MERGE_STYLE_REBASE: // Rebase before merging
+
+		// Rebase head branch based on base branch, this creates a non-branch commit state.
+		if _, stderr, err = process.ExecDir(-1, tmpBasePath,
+			fmt.Sprintf("PullRequest.Merge (git rebase): %s", tmpBasePath),
+			"git", "rebase", "--quiet", pr.BaseBranch, remoteHeadBranch); err != nil {
+			return fmt.Errorf("git rebase [%s on %s]: %s", remoteHeadBranch, pr.BaseBranch, stderr)
+		}
+
+		// Name non-branch commit state to a new temporary branch in order to save changes.
+		tmpBranch := com.ToStr(time.Now().UnixNano(), 10)
+		if _, stderr, err = process.ExecDir(-1, tmpBasePath,
+			fmt.Sprintf("PullRequest.Merge (git checkout): %s", tmpBasePath),
+			"git", "checkout", "-b", tmpBranch); err != nil {
+			return fmt.Errorf("git checkout '%s': %s", tmpBranch, stderr)
+		}
+
+		// Check out the base branch to be operated on.
+		if _, stderr, err = process.ExecDir(-1, tmpBasePath,
+			fmt.Sprintf("PullRequest.Merge (git checkout): %s", tmpBasePath),
+			"git", "checkout", pr.BaseBranch); err != nil {
+			return fmt.Errorf("git checkout '%s': %s", pr.BaseBranch, stderr)
+		}
+
+		// Merge changes from temporary branch to the base branch.
+		if _, stderr, err = process.ExecDir(-1, tmpBasePath,
+			fmt.Sprintf("PullRequest.Merge (git merge): %s", tmpBasePath),
+			"git", "merge", tmpBranch); err != nil {
+			return fmt.Errorf("git merge [%s]: %v - %s", tmpBasePath, err, stderr)
+		}
+
+	default:
+		return fmt.Errorf("unknown merge style: %s", mergeStyle)
 	}
 
-	// Push back to upstream.
+	// Push changes on base branch to upstream.
 	if _, stderr, err = process.ExecDir(-1, tmpBasePath,
 		fmt.Sprintf("PullRequest.Merge (git push): %s", tmpBasePath),
 		"git", "push", baseGitRepo.Path, pr.BaseBranch); err != nil {
@@ -269,7 +321,7 @@ func (pr *PullRequest) Merge(doer *User, baseGitRepo *git.Repository) (err error
 	pr.HasMerged = true
 	pr.Merged = time.Now()
 	pr.MergerID = doer.ID
-	if _, err = sess.Id(pr.ID).AllCols().Update(pr); err != nil {
+	if _, err = sess.ID(pr.ID).AllCols().Update(pr); err != nil {
 		return fmt.Errorf("update pull request: %v", err)
 	}
 
@@ -303,7 +355,6 @@ func (pr *PullRequest) Merge(doer *User, baseGitRepo *git.Repository) (err error
 		return nil
 	}
 
-	// TODO: when squash commits, no need to append merge commit.
 	// It is possible that head branch is not fully sync with base branch for merge commits,
 	// so we need to get latest head commit and append merge commit manully
 	// to avoid strange diff commits produced.
@@ -312,7 +363,9 @@ func (pr *PullRequest) Merge(doer *User, baseGitRepo *git.Repository) (err error
 		log.Error(2, "GetBranchCommit: %v", err)
 		return nil
 	}
-	l.PushFront(mergeCommit)
+	if mergeStyle == MERGE_STYLE_REGULAR {
+		l.PushFront(mergeCommit)
+	}
 
 	commits, err := ListToPushCommits(l).ToApiPayloadCommits(pr.BaseRepo.RepoPath(), pr.BaseRepo.HTMLURL())
 	if err != nil {
@@ -323,7 +376,7 @@ func (pr *PullRequest) Merge(doer *User, baseGitRepo *git.Repository) (err error
 	p := &api.PushPayload{
 		Ref:        git.BRANCH_PREFIX + pr.BaseBranch,
 		Before:     pr.MergeBase,
-		After:      pr.MergedCommitID,
+		After:      mergeCommit.ID.String(),
 		CompareURL: setting.AppURL + pr.BaseRepo.ComposeCompareURL(pr.MergeBase, pr.MergedCommitID),
 		Commits:    commits,
 		Repo:       pr.BaseRepo.APIFormat(nil),
@@ -367,10 +420,16 @@ func (pr *PullRequest) testPatch() (err error) {
 		return fmt.Errorf("UpdateLocalCopy [%d]: %v", pr.BaseRepoID, err)
 	}
 
+	args := []string{"apply", "--check"}
+	if pr.BaseRepo.PullsIgnoreWhitespace {
+		args = append(args, "--ignore-whitespace")
+	}
+	args = append(args, patchPath)
+
 	pr.Status = PULL_REQUEST_STATUS_CHECKING
 	_, stderr, err := process.ExecDir(-1, pr.BaseRepo.LocalCopyPath(),
 		fmt.Sprintf("testPatch (git apply --check): %d", pr.BaseRepo.ID),
-		"git", "apply", "--check", patchPath)
+		"git", args...)
 	if err != nil {
 		log.Trace("PullRequest[%d].testPatch (apply): has conflit\n%s", pr.ID, stderr)
 		pr.Status = PULL_REQUEST_STATUS_CONFLICT
@@ -382,7 +441,7 @@ func (pr *PullRequest) testPatch() (err error) {
 // NewPullRequest creates new pull request with labels for repository.
 func NewPullRequest(repo *Repository, pull *Issue, labelIDs []int64, uuids []string, pr *PullRequest, patch []byte) (err error) {
 	sess := x.NewSession()
-	defer sessionRelease(sess)
+	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
@@ -487,7 +546,7 @@ func GetUnmergedPullRequestsByBaseInfo(repoID int64, branch string) ([]*PullRequ
 
 func getPullRequestByID(e Engine, id int64) (*PullRequest, error) {
 	pr := new(PullRequest)
-	has, err := e.Id(id).Get(pr)
+	has, err := e.ID(id).Get(pr)
 	if err != nil {
 		return nil, err
 	} else if !has {

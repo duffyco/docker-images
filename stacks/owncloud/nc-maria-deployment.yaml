@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: nc-maria
+  name: nc-maria
+  namespace: nextcloud  
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nc-maria
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: nc-maria
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_DATABASE
+          value: nextcloud
+        - name: MYSQL_PASSWORD
+          value: FSenhbE38dG6A3Rr
+        - name: MYSQL_ROOT_PASSWORD
+          value: xWV59V2WLuFwrRKD
+        - name: MYSQL_USER
+          value: nextclouddbuser
+        image: registry.duffyco.ca:5000/nc-mariadb:latest
+        name: nc-maria
+        resources: {}
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: nc-maria-data
+      restartPolicy: Always
+      volumes:
+      - name: nc-maria-data
+        hostPath:
+           path: /mnt/services/nextcloud/mariadb
+           type: Directory
+
+status: {}

@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  name: transmission
+  namespace: services
+spec:
+  type: LoadBalancer
+  ports:
+  - name: "9003"
+    port: 9003
+    targetPort: 5050
+    protocol: TCP
+  - name: "9004"
+    port: 9004
+    targetPort: 9091
+    protocol: TCP
+  - name: "51413"
+    port: 51413
+    protocol: TCP
+  selector:
+    app: transmission
+status:
+  loadBalancer: {}

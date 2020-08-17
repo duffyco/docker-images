@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  name: www-duffy-dev
+  namespace: services
+spec:
+  type: LoadBalancer
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+  selector:
+    app: www.duffy.dev
+status:
+  loadBalancer: {}
